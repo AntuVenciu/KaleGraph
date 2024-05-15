@@ -3,11 +3,14 @@
 #include <TMath.h>
 #include <TStyle.h>
 #include <TChain.h>
+#include <TGraph.h>
+#include <TCanvas.h>
 #include <TFile.h>
 #include <fstream>
 #include <iomanip>
 #include <vector>
 #include <iostream>
+#include <fstream>
 #include <cmath>
 #include <numeric>
 #include <map>
@@ -33,21 +36,74 @@ vector<int> wireIDSorting(vector<double> values, vector<int> ids) {
 
   // initialize original index locations
   vector<size_t> idx(values.size());
-  std::iota(idx.begin(), idx.end(), 0);
+  iota(idx.begin(), idx.end(), 0);
 
   // sort indexes based on comparing values in v
   // using std::stable_sort instead of std::sort
   // to avoid unnecessary index re-orderings
   // when v contains elements of equal values 
-  std::stable_sort(idx.begin(), idx.end(),
-		   [&values](size_t i1, size_t i2) {return values[i1] < values[i2];});
+  stable_sort(idx.begin(), idx.end(),
+	      [&values](size_t i1, size_t i2) {return values[i1] < values[i2];});
 
-  std::vector<int> copy_vector;
+  vector<int> copy_vector; 
   for (auto i : idx) {
     copy_vector.push_back(ids.at(i));
   }
   return copy_vector;
 
+}
+
+vector<double> zSorting(vector<double> values, vector<int> ids) {
+
+  // initialize original index locations
+  vector<size_t> idx(values.size());
+  iota(idx.begin(), idx.end(), 0);
+
+  // sort indexes based on comparing values in v
+  // using std::stable_sort instead of std::sort
+  // to avoid unnecessary index re-orderings
+  // when v contains elements of equal values 
+  stable_sort(idx.begin(), idx.end(),
+	      [&values](size_t i1, size_t i2) {return values[i1] < values[i2];});
+
+  vector<double> copy_vector;
+  for (auto i : idx) {
+    copy_vector.push_back(values.at(i));
+  }
+  return copy_vector;
+
+}
+
+vector<double> phiSorting(vector<double> values, vector<double> zValues) {
+
+  // initialize original index locations
+  vector<size_t> idx(values.size());
+  iota(idx.begin(), idx.end(), 0);
+
+  // sort indexes based on comparing values in v
+  // using std::stable_sort instead of std::sort
+  // to avoid unnecessary index re-orderings
+  // when v contains elements of equal values 
+  stable_sort(idx.begin(), idx.end(),
+	      [&zValues](size_t i1, size_t i2) {return zValues[i1] < zValues[i2];});
+
+  vector<double> copy_vector;
+  for (auto i : idx) {
+    copy_vector.push_back(values.at(i));
+  }
+  return copy_vector;
+
+}
+
+// Draw the hits in xy view
+TGraph* drawXYView(std::vector<double> x, std::vector<double> y) {
+  int nHits = x.size();
+  TGraph* gr = new TGraph(nHits, x.data(), y.data());
+  gr->SetMarkerStyle(20);
+  
+  gr->SetLineColor(kBlue);
+  
+  return gr;
 }
 
 map<Int_t, TString> PrepareRunList(TString dir, TString list, Int_t startRun=0, Int_t maxNRuns=-1);
@@ -70,25 +126,36 @@ tuple<Int_t, Int_t, Int_t>  TrackingEfficiencyStudy(
 );
 
 //______________________________________________________________________________
-std::vector<std::string> split(const std::string& input, char delimiter)
+vector<string> split(const string& input, char delimiter)
 {
-    std::istringstream stream(input);
+    istringstream stream(input);
 
-    std::string field;
-    std::vector<std::string> result;
-    while (std::getline(stream, field, delimiter)) {
+    string field;
+    vector<string> result;
+    while (getline(stream, field, delimiter)) {
         result.push_back(field);
     }
     return result;
 }
 
-
+TCanvas* c = new TCanvas();
 
 //______________________________________________________________________________
 void DataDrivenEdgeConnectionStudy()
 {
 
-  TString inputrecdir = "/meg/data1/offline/processes/20240209/424xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
+  // Initializing EdgeMatrix
+  vector<vector<int>> EdgeMatrix;
+
+   for (int i=0; i<1920; i++) {
+     vector<int> column;
+     for (int j=0; j<1920; j++) {
+       column.push_back(0);
+     }
+     EdgeMatrix.push_back(column);
+   }
+
+   TString inputrecdir = "/meg/data1/offline/processes/20240209/424xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
    TString runList = "";
    Int_t sRun = 0;
    Int_t nfile = 205;
@@ -127,8 +194,6 @@ void DataDrivenEdgeConnectionStudy()
          file0 = TFile::Open(file);
       }
    }
-
-
 
    TBranch *bEventHeader;
    MEGEventHeader *pEventHeader;
@@ -192,7 +257,7 @@ void DataDrivenEdgeConnectionStudy()
    selector.SetThresholds(EBeamPeriodID::kBeamPeriod2022, kTRUE);
 
    // update threshoulds and parameters to custom values
-   /*
+   
    selector.fPrePositronSelectTimePositronGamma[0] = denominatorCutTC.timeWindow[0] - refTime;
    selector.fPrePositronSelectTimePositronGamma[1] = denominatorCutTC.timeWindow[1] - refTime;
    selector.fEPositron[0] = 42 * MeV; //42
@@ -204,12 +269,9 @@ void DataDrivenEdgeConnectionStudy()
    selector.fTargetYOffset = targetOffset[1];
    selector.fTargetZ = targetSemiAxis[0];
    selector.fTargetY = targetSemiAxis[1];
-   */
-
-   int EdgeMatrix[1920][1920];
 
    for (Int_t iEvent = 0; iEvent < nEvent; iEvent++) {
-      
+
       if (iEvent % 5000 == 1) {
          cout<<iEvent<<" events finished..."<<endl;
       } 
@@ -241,8 +303,11 @@ void DataDrivenEdgeConnectionStudy()
 	// Then, we fill the EdgeMatrix
 	
 	Int_t nhits = pDCHTrack->Getnhits();
-	std::vector<double> zhit_vec;
-	std::vector<Int_t> wireID_vec;
+	vector<double> zhit_vec;
+	vector<double> phihit_vec;
+	vector<Int_t> wireID_vec;
+
+	Int_t ngoodhits = 0;
 
 	for (Int_t ihit=0; ihit < nhits; ihit++) {
 
@@ -252,25 +317,57 @@ void DataDrivenEdgeConnectionStudy()
 	  }
 
 	  MEGDCHHit* aHit = (MEGDCHHit*)pDCHHitArray->At(pDCHTrack->GethitindexAt(ihit));
+	  if (!aHit->Getgood()) {
+	    continue;
+	  }
 	  Int_t wireID = aHit->Getwire();
 	  wireID_vec.push_back(wireID);
 	  MEGStateVector* state = (MEGStateVector*) pDCHTrack->GetPredictedStateVectorAt(ihit);
 	  double zhit = state->GetZ();
+	  //double phihit = state->GetPhi();
 	  zhit_vec.push_back(zhit);
+	  //phihit_vec.push_back(phihit);
+	  ngoodhits++;
 	}
-
+	
 	// Sorting
 	vector<int> wireID_sorted = wireIDSorting(zhit_vec, wireID_vec);
+	vector<double> z_sorted = zSorting(zhit_vec, wireID_vec);
+	//vector<double> phi_sorted = phiSorting(phihit_vec, zhit_vec);
+	
+	/*
+	c->cd();
+	TGraph* gr = drawXYView(z_sorted, phi_sorted);
+	gr->Draw("aCp0");
+	c->Update();
+	*/
+
+	//break;
 
 	// Filling EdgeMatrix
-	for (Int_t id=0; id < wireID_sorted.size() - 1; id++) {
-	  EdgeMatrix[wireID_sorted.at(id)][wireID_sorted.at(id + 1)]++;
+	for (Int_t id=0; id < ngoodhits - 1; id++) {
+	  EdgeMatrix.at(wireID_sorted.at(id)).at(wireID_sorted.at(id + 1))++;
 	}
 
       }
 
    } // Event Loop
+   
+   c->Draw();
 
+   // Write the EdgeMatrix in a file
+   ofstream edgeMatrixFile("edgeMatrix.txt");
+   
+   for (auto row : EdgeMatrix) {
+     for (auto val : row) {
+       edgeMatrixFile << val << " ";
+     }
+     edgeMatrixFile << endl;
+   }
+
+   edgeMatrixFile.close();
+   
+   cout << "edgeMatrix.txt file written and closed." << endl;   
 
 }
 
@@ -295,11 +392,11 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
       dirent *pDirEnt = nullptr;
       while ((pDirEnt = readdir(pDir)) != nullptr) {
          string file = pDirEnt->d_name;
-         if (file.find("rec") != std::string::npos
-             && file.find(".root") != std::string::npos) {
-            std::smatch results;
-            if (std::regex_match(file, results, std::regex("rec(\\d+).root"))) {
-               files[std::atoi(results[1].str().data())] = dir + file.c_str();
+         if (file.find("rec") != string::npos
+             && file.find(".root") != string::npos) {
+            smatch results;
+            if (regex_match(file, results, regex("rec(\\d+).root"))) {
+               files[atoi(results[1].str().data())] = dir + file.c_str();
             }
          }
       }
@@ -311,12 +408,12 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
    } else {
       // Read a run list
 
-      std::ifstream runListFile(runlist);
-      std::string str;
+      ifstream runListFile(runlist);
+      string str;
       vector<char> delimiters {'\t', ',', ' '};
-      while (std::getline(runListFile, str)) {
+      while (getline(runListFile, str)) {
          for (auto && deli: delimiters) {
-            if (str.find(deli) != std::string::npos) {
+            if (str.find(deli) != string::npos) {
                auto a = split(str, deli);
                str = a[0];
                break;
@@ -325,9 +422,9 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
          
          Int_t run = -1;
          try {
-            run = std::stoi(str);
-         } catch (const std::invalid_argument& e) {
-            //std::cout << "[" << i << "]: " << "invalid argument" << std::endl;
+            run = stoi(str);
+         } catch (const invalid_argument& e) {
+            //cout << "[" << i << "]: " << "invalid argument" << endl;
             continue;
          }
          
@@ -339,7 +436,7 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
          } else {
             recfile = dir + Form("rec%05d.root", run);
          }
-         std::ifstream ifs(recfile.Data());
+         ifstream ifs(recfile.Data());
          if (!ifs.is_open()) continue;
          ifs.close();
          
@@ -359,108 +456,4 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
    }
    
    return files;
-}
-
-
-tuple<Int_t, Int_t, Int_t>  TrackingEfficiencyStudy(
-      MEGPhysicsSelection& selector,
-      SPXDenominatorCut& spxdenominatorCut,
-      const TClonesArray* spxclusters,
-      const TClonesArray* spxindependenttracks,
-      const TClonesArray* positrons,
-      const TClonesArray* spxtracks,
-      Double_t refTime
-                                                                  )
-{
-   // spxdenominatorCut is to apply cuts on TC hit time and/or position
-   // To be used for tracking efficiency estimation.
-   // Return the number of tracks for denominator and numerator.
-
-   Int_t denominator(0), numerator(0);
-   Int_t nClusterWholeRegion(0); // number of TC clusters without position cut (same as denominator if you choose not to apply z/phi cut)
-
-   if (!positrons || !spxtracks) {
-      Report(R_ERROR, "Bad input");
-      return {denominator, numerator, nClusterWholeRegion};
-   }
-
-   Bool_t useSPXIndependentTrack = kFALSE;
-   if ((useSPXIndependentTrack && !spxindependenttracks)
-       || (!useSPXIndependentTrack && !spxclusters)){
-      Report(R_ERROR, "Bad input");
-      return {denominator, numerator, nClusterWholeRegion};
-   }      
-
-   
-   // Count denominator
-   set<Int_t> denoSPXClusterIndeces;
-   if (!useSPXIndependentTrack) { // SPXCluster base
-      Int_t nSPXClusters = spxclusters->GetEntriesFast();
-      for (Int_t iSPXCluster = 0; iSPXCluster < nSPXClusters; iSPXCluster++) {
-         auto pSPXCluster = (MEGSPXCluster*)spxclusters->At(iSPXCluster);
-         // Use only the first cluster in a cluster-group
-         if (pSPXCluster->GetindexInGroup() != 0) {
-            continue;
-         }
-         // Nhits selection
-         if (pSPXCluster->Getnhits() < selector.fSPXNHitsForEfficiencyEstimation) {
-            continue;
-         }
-         // Timing selection
-         Double_t timediff = pSPXCluster->Gettime() - refTime;
-         if (timediff < selector.fPrePositronSelectTimePositronGamma[0]
-             || timediff > selector.fPrePositronSelectTimePositronGamma[1]) {
-            continue;
-         }
-         ++nClusterWholeRegion;
-         // z position selection
-         Double_t zTCCluster = pSPXCluster->Getz();
-         if (zTCCluster < spxdenominatorCut.zWindowTC[0]
-             || zTCCluster > spxdenominatorCut.zWindowTC[1]) {
-            continue;
-         }
-         Double_t phiTCCluster = pSPXCluster->Getphi();
-         if (phiTCCluster < spxdenominatorCut.phiWindowTC[0]
-             || phiTCCluster > spxdenominatorCut.phiWindowTC[1]) {
-            continue;
-         }
-         
-         ++denominator;
-         denoSPXClusterIndeces.insert(iSPXCluster);
-      }
-   } else { // SPXIndependentTrack base
-      // To be implemented
-   }
-
-   // Count numerator
-   set<Int_t> matchedSPXClusterIndeces; // set of SPXCluster already matched to DCHTrack
-   vector<Bool_t> selected;
-   Bool_t oriSelectAPositron = selector.fSelectAPositron;
-   selector.fSelectAPositron = kFALSE;
-   selector.PositronSelection(selected, positrons, false); 
-
-   Int_t nGLBPositrons = positrons->GetEntriesFast();
-   //cout << "positrons " << nGLBPositrons << endl;
-   for (Int_t iGLBPositron = 0; iGLBPositron < nGLBPositrons; iGLBPositron++) {
-      if (!selected[iGLBPositron]) {
-         continue;
-      }
-      auto pGLBPositron = (MEGGLBPositron*)positrons->At(iGLBPositron);
-
-      // Check the correspondence with the SPXClusters in denominator
-      Int_t spxTrackIndex = pGLBPositron->GetSPXTrackIndex();
-      //cout << "spx track index = " << spxTrackIndex << endl;
-      if (spxTrackIndex >= spxtracks->GetEntriesFast()) continue;
-      auto pSPXTrack = (MEGSPXTrack*)spxtracks->At(spxTrackIndex);
-      Int_t clusterIndex = pSPXTrack->GetclusterindexAt(0);
-      if (denoSPXClusterIndeces.find(clusterIndex) != denoSPXClusterIndeces.end() &&
-          matchedSPXClusterIndeces.find(clusterIndex) == matchedSPXClusterIndeces.end()) { 
-         matchedSPXClusterIndeces.insert(clusterIndex);
-         ++numerator;
-      }
-   }
-   
-   // revert setting
-   selector.fSelectAPositron = oriSelectAPositron;
-   return {denominator, numerator, nClusterWholeRegion};
 }
