@@ -19,8 +19,8 @@ def calculate_coordinates(node_id, pixel_geo):
         hittype = 0
     else:
         pixel_id = node_id - 1920
-        x = pixel_geo[pixel_id][1]
-        y = pixel_geo[pixel_id][2]
+        x = pixel_geo[pixel_id][1] * 10
+        y = pixel_geo[pixel_id][2] * 10
         hittype = 1
     return hittype, x, y
 
@@ -46,11 +46,16 @@ def plot_graph(adjacency_matrix):
 
     # Plot nodes and edges 
     for node_id in range(num_nodes):
-        # Put a cut on connections contributing less then 0.1% in the number of connections
+        # Put a cut on connections contributing less then x in the number of connections
         # of a node
-        norm = np.array(adjacency_matrix[node_id]).sum()
-        cut = norm * 0.025
+        norm_cdch = np.array(adjacency_matrix[node_id][:1920]).sum()
+        cut_cdch = norm_cdch * 0.015
+        norm_spx = np.array(adjacency_matrix[node_id][1920:]).sum()
+        cut_spx = norm_spx * 0.005
         for j in range(num_nodes):
+            cut = cut_cdch
+            if j > 1920 or node_id > 1920:
+                cut = cut_spx
             # Plot only connected edges
             if adjacency_matrix[node_id][j] > 0:
 
@@ -62,7 +67,7 @@ def plot_graph(adjacency_matrix):
                     number_of_nodes += 1
                 if not is_node_plotted[j]:
                     hittype, node_x, node_y = calculate_coordinates(j, pixel_geo)
-                    plt.errorbar(node_x, node_y, fmt=fmts[hitttype], alpha=.5, markersize=10, color=colors[hittype])
+                    plt.errorbar(node_x, node_y, fmt=fmts[hittype], alpha=.5, markersize=10, color=colors[hittype])
                     is_node_plotted[j] = 1
                     number_of_nodes += 1
                 # Plot edges
