@@ -73,8 +73,14 @@ def build_graph(hits_id):
                     edge_matrix.append([i, j])
                     num_edges += 1
     
+    edge_matrix = np.array(edge_matrix)
+
+    # Print outs
     print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
     print(f"Number of edges = {num_edges}")
+    print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
+    print(f"EDGE MATRIX =\n", edge_matrix)
+
     return edge_matrix
 
 
