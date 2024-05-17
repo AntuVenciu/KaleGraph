@@ -1,9 +1,73 @@
 """
-Build the graph.
+Functions to build the graph.
+Hits have the following scheme for features:
+0: ID
+1: time
+2: layer
+3: x
+4: y
+5: ztimediff
+6: wire phi
+7: wire theta
 """
 import numpy as np
 import matplotlib.pyplot as plt
 
+
+def min_dist(hits, i, j):
+    """
+    Return minimum distance between wires i and j
+    """
+    # Properties of the hits
+    #layer_i = hits[i][2]
+    #layer_j = hits[j][2]
+    x_i = hits[i][3]
+    x_j = hits[j][3]
+    y_i = hits[i][4]
+    y_j = hits[j][4]
+    z_i = hits[i][5]
+    z_j = hits[j][5]
+    #phi_i = hits[i][6]
+    #phi_j = hits[j][6]
+    #theta_i = hits[i][7]
+    #theta_j = hits[j][7]
+    
+    return np.sqrt(x_i * x_j + y_i * y_j + z_i * z_j)
+
+def calculate_edge_features(edge_matrix, hits, prob):
+    """
+    Evaluate edge features.
+    For each edge, the following features are evaluated:
+    1. time difference between hits;
+    2. minimum distance between hits;
+    3. data driven edge probability.
+    Return:
+    edges_features = matrix of shape = (num_edges, num_edge_features)
+    """
+    # Initialize edge_features matrix
+    edges_features = []
+    
+    # Loop over edges
+    for e in edge_matrix:
+        # Get nodes
+        i = e[0]
+        j = e[1]
+        
+        # edge e features vector
+        e_features = []
+        
+        # Calculate time diff
+        e_features.append(hits[i][1] - hits[j][1])
+        # Calculate minimum distance
+        e_features.append(min_dist(hits, i, j))
+        # Get data driven weight (probability) of each connection
+        e_features.append(prob[i][j])
+        
+        edges_features.append(e_features)
+    
+    return edges_features
+    
+    
 
 def build_adjacency_matrix(file_name="edgeMatrix.txt",
                            f_cdch=0.015,
@@ -82,13 +146,6 @@ def build_edge_matrix(hits_id):
     #print(f"EDGE MATRIX =\n", edge_matrix)
 
     return edge_matrix
-
-def calculate_edge_features(edge_matrix, hits):
-    """
-    Evaluate edge features.
-    
-    """
-
 
 def build_graph(hits):
     """
