@@ -47,7 +47,7 @@ def build_adjacency_matrix(file_name="edgeMatrix.txt",
 
     return adj_matrix
 
-def build_graph(hits_id):
+def build_edge_matrix(hits_id):
     """
     Build a graph from a list of hits ID.
     """
@@ -79,9 +79,40 @@ def build_graph(hits_id):
     print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
     print(f"Number of edges = {num_edges}")
     print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
-    print(f"EDGE MATRIX =\n", edge_matrix)
+    #print(f"EDGE MATRIX =\n", edge_matrix)
 
     return edge_matrix
+
+def calculate_edge_features(edge_matrix, hits):
+    """
+    Evaluate edge features.
+    
+    """
+
+
+def build_graph(hits):
+    """
+    Build the graph.
+    Input:
+    param hits: matrix X of shape (n_hits, num_node_features)
+    Output:
+    graph: list.
+    At index 0: matrix of hits features X
+    At index 1: matrix of edge features R of shape = (num_edges, num_edge_features)
+    At index 2: edge matrix
+    """
+    # X is simple
+    X = hits
+
+    # Build the adjacency matrix
+    hits_id = hits[0] # Param 0 of hits is the hit ID
+    edge_matrix = build_edge_matrix(hits_id)
+
+    # Build the edge_feature vector
+    R = calculate_edge_features(edge_matrix, hits)
+    
+    # Return the graph
+    return [X, edge_matrix.T, R]
 
 
 if __name__ == "__main__" :
@@ -89,4 +120,4 @@ if __name__ == "__main__" :
     Test these functions
     """
     hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.5]
-    build_graph(hitIDs)
+    build_edge_matrix(hitIDs)
