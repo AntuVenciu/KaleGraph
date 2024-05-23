@@ -11,8 +11,17 @@ Hits have the following scheme for features:
 7: wire theta
 """
 import numpy as np
-import matplotlib.pyplot as plt
 
+
+def quantile(sorted_array, f):
+    """
+    Evaluate value of array at f-th quantile of the sorted array
+    """
+    sum = 0
+    for x in sorted_array:
+        sum += x
+        if sum > f:
+            return x
 
 def min_dist(hits, i, j):
     """
@@ -34,7 +43,7 @@ def min_dist(hits, i, j):
     
     return np.sqrt(x_i * x_j + y_i * y_j + z_i * z_j)
 
-def calculate_edge_features(edge_matrix, hits, prob):
+def calculate_edge_features(hits, edge_matrix, adj_matrix):
     """
     Evaluate edge features.
     For each edge, the following features are evaluated:
@@ -61,13 +70,12 @@ def calculate_edge_features(edge_matrix, hits, prob):
         # Calculate minimum distance
         e_features.append(min_dist(hits, i, j))
         # Get data driven weight (probability) of each connection
-        e_features.append(prob[i][j])
+        # from the adjacency matrix
+        e_features.append(adj_matrix[i][j])
         
         edges_features.append(e_features)
     
     return edges_features
-    
-    
 
 def build_adjacency_matrix(file_name="edgeMatrix.txt",
                            f_cdch=0.015,
@@ -75,8 +83,12 @@ def build_adjacency_matrix(file_name="edgeMatrix.txt",
     """
     Create the data driven adjacency matrix for the graph
     from a data driven file of connection occurrence.
+    The adjacency matrix has shape = (n_nodes_tot x n_nodes_tot)
+    and is filled with p>0 (connected, p = probability of the connection) and 0 (not connected).
     Apply a cut for the edge connection selection contributing less
     than f.
+    Return:
+    adjacency_matrix
     """
     # Load file of occurrence
     occurrence_matrix = np.loadtxt(file_name)
@@ -92,47 +104,57 @@ def build_adjacency_matrix(file_name="edgeMatrix.txt",
     for i in range(NUM_TOT_NODES):
         # Evaluate cut to discard connections
         norm_cdch = np.array(occurrence_matrix[i][:1920]).sum()
-        cut_cdch = norm_cdch * f_cdch
         norm_spx = np.array(occurrence_matrix[i][1920:]).sum()
-        cut_spx = norm_spx * f_spx
+        
+        # Evaluate the (1 - f) percentile of the occupancy matrix as threshold
+        # for node connections
+        if norm_cdch > 0:
+            cut_cdch = norm_cdch * quantile(np.sort(np.array(occurrence_matrix[i][:1920]) / norm_cdch), f_cdch)
+        else:
+            cut_cdch = 1e30
+        if norm_spx > 0:
+            cut_spx = norm_spx * quantile(np.sort(np.array(occurrence_matrix[i][1920:]) / norm_spx), f_spx)
+        else:
+            cut_spx = 1e30
+        
 
         for j in range(NUM_TOT_NODES):
             # Select cut based on CDCH or TC connections
+            norm = norm_cdch
             cut = cut_cdch
             if j > 1920 or i > 1920:
+                norm = norm_spx
                 cut = cut_spx
-            
-            if occurrence_matrix[i][j] > cut:
-                adj_matrix[i][j] += 1
-                num_edges += 1
 
-    #print(f"Number of nodes = {NUM_TOT_NODES}")
-    #print(f"Number of edges = {number_of_edges}")
+            if occurrence_matrix[i][j] > cut and norm > 0:
+                adj_matrix[i][j] = occurrence_matrix[i][j] / norm
+                num_edges += 1
+                
+    print(f"Number of Total Nodes = {NUM_TOT_NODES}")
+    print(f"Number of Total Edges = {num_edges}")
 
     return adj_matrix
 
-def build_edge_matrix(hits_id):
+def build_edge_matrix(hits_id, adj_matrix):
     """
-    Build a graph from a list of hits ID.
+    Build a graph from a list of hits ID, provided the adjacency matrix.
     """
     #Initialize the edge matrix: shape = 2 x num_edges
     edge_matrix = []
     num_edges = 0
 
-    # Calculate the adjacency matrix
-    adj_matrix = build_adjacency_matrix()
     NUM_TOT_NODES = adj_matrix.shape[0]
-    
+
     # Create a vector of bools with 1 if hit is in hit_id
     # and 0 if it is not
     hit_is_in_list = [1 if x in hits_id else 0 for x in range(0, NUM_TOT_NODES)]
 
     # Loop over hits ID to build the graph
     for i in hits_id:
-        for j in range(0, i): # Just one directional graph
-            if adj_matrix[i][j] == 1:
+        for j in range(i): # Just one directional graph
+            if adj_matrix[i][j] > 0:
                 # Check that id == j is in hits_id
-                if hit_is_in_list[int(j)]:
+                if hit_is_in_list[j]:
                     # Build the edge between node i and j
                     edge_matrix.append([i, j])
                     num_edges += 1
@@ -140,14 +162,14 @@ def build_edge_matrix(hits_id):
     edge_matrix = np.array(edge_matrix)
 
     # Print outs
-    print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
-    print(f"Number of edges = {num_edges}")
-    print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
+    #print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
+    #print(f"Number of edges = {num_edges}")
+    #print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
     #print(f"EDGE MATRIX =\n", edge_matrix)
 
     return edge_matrix
 
-def build_graph(hits):
+def build_graph(hits, adj_matrix):
     """
     Build the graph.
     Input:
@@ -162,8 +184,8 @@ def build_graph(hits):
     X = hits
 
     # Build the adjacency matrix
-    hits_id = hits[0] # Param 0 of hits is the hit ID
-    edge_matrix = build_edge_matrix(hits_id)
+    hits_id = hits # Param 0 of hits is the hit ID
+    edge_matrix = build_edge_matrix(hits_id, adj_matrix)
 
     # Build the edge_feature vector
     R = calculate_edge_features(edge_matrix, hits)
@@ -173,8 +195,40 @@ def build_graph(hits):
 
 
 if __name__ == "__main__" :
-    """
-    Test these functions
-    """
-    hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.5]
-    build_edge_matrix(hitIDs)
+
+    PLOT = False
+    TIME = True
+
+    if (TIME):
+        """
+        Time these functions
+        """
+        import time
+    
+        
+        t_start = time.time()
+        adj_matrix = build_adjacency_matrix()
+        t_stop = time.time()
+        print(f"{t_stop - t_start :.3f} s to initialize the adjacency matrix")
+    
+        deltaT = []
+        for i in range(0, 100):
+            hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
+            t_0 = time.time()
+            my_graph = build_graph(hitIDs, adj_matrix)
+            t_1 = time.time()
+            deltaT.append(t_1 - t_0)
+        T = np.array(deltaT)
+        print(f"Average time to make a graph: {np.mean(T):.3f} s +/- {np.std(T):.3f} s")
+
+    if (PLOT):
+        """
+        Plot a graph
+        """
+        from plot_graph import plot
+        
+        
+        adj_matrix = build_adjacency_matrix()
+        hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
+        my_graph = build_graph(hitIDs, adj_matrix)
+        plot(my_graph[1].T)

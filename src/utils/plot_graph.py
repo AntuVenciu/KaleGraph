@@ -4,8 +4,6 @@ Plotting the 2D graph of hits based on the 'edgeMatrix.txt' file
 import numpy as np
 import matplotlib.pyplot as plt
 
-import build_graph as bg
-
 
 def calculate_coordinates(node_id, pixel_geo):
     # Evaluate x-y coordinate of a wire and TC tile at CDCH center:
@@ -26,13 +24,13 @@ def calculate_coordinates(node_id, pixel_geo):
         hittype = 1
     return hittype, x, y
 
-def plot_graph(edge_matrix):
+def plot(edge_matrix):
     """
     Plot the graph based on an edge matrix of shape 2 x num_edges
     containing hit ID connected
     """
     
-    # Load TC pixel geoemtry
+    # Load TC pixel geometry
     pixel_geo = np.loadtxt("spxGeometry.txt")
 
     colors = ["pink", "blue"] # colors for CDCH and TC nodes
@@ -59,6 +57,8 @@ if __name__ == "__main__":
     """
     Test plot function
     """
+    import build_graph as bg
+
     hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
     edges = bg.build_graph(hitIDs)
-    plot_graph(edges)
+    plot(edges)
