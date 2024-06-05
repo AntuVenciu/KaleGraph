@@ -6,7 +6,7 @@ Hits have the following scheme for features:
 2: layer
 3: x
 4: y
-5: ztimediff
+5: z
 6: wire phi
 7: wire theta
 """
@@ -30,12 +30,12 @@ def min_dist(hits, i, j):
     # Properties of the hits
     #layer_i = hits[i][2]
     #layer_j = hits[j][2]
-    x_i = hits[i]['x']
-    x_j = hits[j]['x']
-    y_i = hits[i]['y']
-    y_j = hits[j]['y']
-    z_i = hits[i]['z']
-    z_j = hits[j]['z']
+    x_i = hits['x'][i]
+    x_j = hits['x'][j]
+    y_i = hits['y'][i]
+    y_j = hits['y'][j]
+    z_i = hits['z'][i]
+    z_j = hits['z'][j]
     #phi_i = hits[i][6]
     #phi_j = hits[j][6]
     #theta_i = hits[i][7]
@@ -66,7 +66,7 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
         e_features = []
         
         # Calculate time diff
-        e_features.append(hits[i][1] - hits[j][1])
+        e_features.append(hits['t'][i] - hits['t'][j])
         # Calculate minimum distance
         e_features.append(min_dist(hits, i, j))
         # Get data driven weight (probability) of each connection
@@ -181,7 +181,14 @@ def build_graph(hits, adj_matrix):
     At index 2: edge matrix
     """
     # X is simple
-    X = hits
+    X = np.array(hits['wireID'],
+                 hits['t'],
+                 hits['layer'],
+                 hits['x'],
+                 hits['y'],
+                 hits['z'],
+                 hits['wirePhi'],
+                 hits['wireTheta'])
 
     # Build the adjacency matrix
     hits_id = hits['id'] # Param 0 of hits is the hit ID

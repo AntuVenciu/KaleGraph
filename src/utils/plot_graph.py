@@ -60,5 +60,5 @@ if __name__ == "__main__":
     import build_graph as bg
 
     hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
-    edges = bg.build_graph(hitIDs)
+    edges['edge_index'] = bg.build_graph(hitIDs)
     plot(edges)
