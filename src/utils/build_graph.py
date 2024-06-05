@@ -30,12 +30,12 @@ def min_dist(hits, i, j):
     # Properties of the hits
     #layer_i = hits[i][2]
     #layer_j = hits[j][2]
-    x_i = hits[i][3]
-    x_j = hits[j][3]
-    y_i = hits[i][4]
-    y_j = hits[j][4]
-    z_i = hits[i][5]
-    z_j = hits[j][5]
+    x_i = hits[i]['x']
+    x_j = hits[j]['x']
+    y_i = hits[i]['y']
+    y_j = hits[j]['y']
+    z_i = hits[i]['z']
+    z_j = hits[j]['z']
     #phi_i = hits[i][6]
     #phi_j = hits[j][6]
     #theta_i = hits[i][7]
@@ -184,14 +184,14 @@ def build_graph(hits, adj_matrix):
     X = hits
 
     # Build the adjacency matrix
-    hits_id = hits # Param 0 of hits is the hit ID
+    hits_id = hits['id'] # Param 0 of hits is the hit ID
     edge_matrix = build_edge_matrix(hits_id, adj_matrix)
 
     # Build the edge_feature vector
     R = calculate_edge_features(edge_matrix, hits)
     
     # Return the graph
-    return [X, edge_matrix.T, R]
+    return {'x' = X, 'edge_index' = edge_matrix.T, 'edge_attr' = R}
 
 
 if __name__ == "__main__" :
@@ -229,6 +229,6 @@ if __name__ == "__main__" :
         
         
         adj_matrix = build_adjacency_matrix()
-        hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
-        my_graph = build_graph(hitIDs, adj_matrix)
-        plot(my_graph[1].T)
+        hits = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
+        my_graph = build_graph(hits, adj_matrix)
+        plot(my_graph['edge_index'].T)
