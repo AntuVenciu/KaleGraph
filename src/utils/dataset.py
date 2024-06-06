@@ -34,6 +34,8 @@ class GraphDataset(Dataset):
 
     def __call__(self):
         # Load attributes of the graph
+        # Here we use some different name convensions for more easy references
+        # to literature
         x = torch.from_numpy(self.graph['x'])
         edge_attr = torch.from_numpy(self.graph['edge_attr'])
         edge_index = torch.from_numpy(self.graph['edge_index'])
@@ -85,6 +87,8 @@ def load_data(filename):
                'trackID' : trackID[events_separators[i] : events_separators[i + 1]],
                'mom' : mom[events_separators[i] : events_separators[i + 1]],
                'trackPhi' : trackPhi[events_separators[i] : events_separators[i + 1]],
-               'trackTheta' : trackTheta[events_separators[i] : events_separators[i + 1]]}]
+               'trackTheta' : trackTheta[events_separators[i] : events_separators[i + 1]]}
+              for i in range(0, len(events_separators) - 1)]
+
     return events
     

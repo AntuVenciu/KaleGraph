@@ -1,0 +1,394 @@
+/*
+Create a first Training Dataset:
+Use as truth labels the hits in tracks belonging to
+positron events
+Use as Mom, Phi and Theta of the track the informations at the target.
+(Optionally) Smear time information of hits.
+
+SPX hits ID in the dataset is augmented by 1920.
+Layer is 10.
+x, y, z from pixelID position.
+phi and theta wire can not be provided->Let's start not using this information
+at the beginning.
+*/
+
+#include <TROOT.h>
+#include <TEfficiency.h>
+#include <TMath.h>
+#include <TStyle.h>
+#include <TChain.h>
+#include <TGraph.h>
+#include <TCanvas.h>
+#include <TFile.h>
+#include <fstream>
+#include <iomanip>
+#include <vector>
+#include <iostream>
+#include <fstream>
+#include <cmath>
+#include <numeric>
+#include <map>
+#include <set>
+#include <regex>
+#include <dirent.h>
+#include <sys/stat.h>
+#include "../common/include/units/MEGSystemOfUnits.h"
+#include "units/MEGPhysicalConstants.h"
+#if !defined(__CLING__) || defined(__ROOTCLING__)
+#   include <ROMEString.h>
+#   include <ROMETreeInfo.h>
+#   include "include/generated/MEGAllFolders.h"
+#   include "glb/MEGPhysicsSelection.h"
+#else
+   class ROMETreeInfo;
+#endif
+using namespace MEG;
+using namespace std;
+
+
+map<Int_t, TString> PrepareRunList(TString dir, TString list, Int_t startRun=0, Int_t maxNRuns=-1);
+
+struct SPXDenominatorCut {
+   Double_t timeWindow[2];  // efficiency vs time
+   Double_t phiWindowTC[2]; // efficiency vs phi
+   Double_t zWindowTC[2];   // efficiency vs z
+   Short_t nClusterHitThreshold; // Apply clusters.nhits >= nClusterHitThreshold cut for denominator
+};
+
+
+//______________________________________________________________________________
+vector<string> split(const string& input, char delimiter)
+{
+    istringstream stream(input);
+
+    string field;
+    vector<string> result;
+    while (getline(stream, field, delimiter)) {
+        result.push_back(field);
+    }
+    return result;
+}
+
+//______________________________________________________________________________
+void WriteTrainingData()
+{
+  
+  TString outputrecdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/";
+  TString outputfilename = outputrecdir + "1e6DataSet_CDCH_SPX.txt";
+  ofstream outputfile = open(outputfilename);
+
+  TString inputrecdir = "/meg/data1/offline/processes/20240209/425xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
+  TString runList = "";
+  Int_t sRun = 0;
+  Int_t nfile = 999;
+  set<Int_t> triggerMask {20};
+
+  // Apply selection to denominator of the efficiency evaluation
+  // TC clusters that passes all the time, z and phi selection are accounted for the efficiency evaluation
+  // If you do not need to apply selections to some of the parameters, just set loose enough values.
+  SPXDenominatorCut denominatorCutTC;
+  // for Efficiency vs time study
+  denominatorCutTC.timeWindow[0] = -642 * nanosecond;
+  denominatorCutTC.timeWindow[1] = -600 * nanosecond;
+  // for Efficiency vs zTC study
+  denominatorCutTC.zWindowTC[0] = -200 * centimeter;
+  denominatorCutTC.zWindowTC[1] = 200 * centimeter;
+  // for Efficiency vs phiTC study
+  denominatorCutTC.phiWindowTC[0] = -180 * degree;
+  denominatorCutTC.phiWindowTC[1] = 20 * degree;
+  denominatorCutTC.nClusterHitThreshold = 4; // Require >= 4 hits
+  
+  
+  
+  // map of input rec files
+  map<Int_t, TString> files = PrepareRunList(inputrecdir, runList, sRun, nfile);
+  Int_t startRun = files.begin()->first;
+  Int_t lastRun = files.rbegin()->first;
+  
+  
+  // Open the files
+  TFile *file0 = 0;
+  TChain *rec = new TChain("rec");
+  for (auto &[run, file] : files) {
+    if (gSystem->AccessPathName(file)) continue;
+    rec->Add(file);
+    if (!file0) {
+      file0 = TFile::Open(file);
+    }
+  }
+  
+  TBranch *bEventHeader;
+  MEGEventHeader *pEventHeader;
+  TBranch *bPositron;
+  TClonesArray *pPositronArray = new TClonesArray("MEGGLBPositron");
+  TBranch *bSPXCluster;
+  TClonesArray *pSPXClusterArray = new TClonesArray("MEGSPXCluster");
+  TBranch *bSPXHit;
+  TClonesArray *pSPXHitArray = new TClonesArray("MEGSPXHit");
+  TBranch *bDCHTrack;
+  TClonesArray *pDCHTrackArray = new TClonesArray("MEGDCHTrack");
+  TBranch *bDCHHit;
+  TClonesArray *pDCHHitArray = new TClonesArray("MEGDCHHit");
+  TBranch *bSPXTrack;
+  TClonesArray *pSPXTrackArray = new TClonesArray("MEGSPXTrack");
+  TBranch *bDCHSPXMatchedTrack;
+  TClonesArray *pDCHSPXMatchedTrackArray = new TClonesArray("MEGDCHSPXMatchedTrack");
+  
+  TBranch *bInfoS;
+  ROMETreeInfo *pInfoS;
+  MEGTargetRunHeader *pTargetRunHeader = (MEGTargetRunHeader*)gROOT->FindObject("TargetRunHeader");
+  pInfoS = new ROMETreeInfo;
+  pEventHeader = new MEGEventHeader;
+  rec->SetBranchStatus("*", 0); 
+  rec->SetBranchStatus("Info.", 1); 
+  rec->SetBranchStatus("Info.*", 1); 
+  rec->SetBranchStatus("eventheader.", 1); 
+  rec->SetBranchStatus("eventheader.mask", 1);
+  rec->SetBranchStatus("positron", 1);
+  rec->SetBranchStatus("positron.*", 1);
+  rec->SetBranchStatus("dchtracks", 1);
+  rec->SetBranchStatus("dchtracks.*", 1);
+  rec->SetBranchStatus("dchhits", 1);
+  rec->SetBranchStatus("dchhits.*", 1);
+  rec->SetBranchStatus("spxclusters", 1); 
+  rec->SetBranchStatus("spxclusters.*", 1); 
+  rec->SetBranchStatus("spxhits", 1); 
+  rec->SetBranchStatus("spxhits.*", 1); 
+  rec->SetBranchStatus("dchspxmatchedtrack", 1); 
+  rec->SetBranchStatus("dchspxmatchedtrack.*", 1); 
+  rec->SetBranchStatus("spxtracks", 1); 
+  rec->SetBranchStatus("spxtracks.*", 1); 
+   
+  rec->SetBranchAddress("Info.", &pInfoS, &bInfoS);
+  rec->SetBranchAddress("eventheader.", &pEventHeader, &bEventHeader);
+  rec->SetBranchAddress("positron", &pPositronArray, &bPositron);
+  rec->SetBranchAddress("spxclusters", &pSPXClusterArray, &bSPXCluster);
+  rec->SetBranchAddress("spxhits", &pSPXHitArray, &bSPXHit);
+  rec->SetBranchAddress("dchspxmatchedtrack", &pDCHSPXMatchedTrackArray, &bDCHSPXMatchedTrack);
+  rec->SetBranchAddress("dchtracks", &pDCHTrackArray, &bDCHTrack);
+  rec->SetBranchAddress("dchhits", &pDCHHitArray, &bDCHHit);
+  rec->SetBranchAddress("spxtracks", &pSPXTrackArray, &bSPXTrack);
+
+
+  Double_t targetSlantAngle = pTargetRunHeader->GetEulerAnglesAt(1);
+  TVector3 targetOffset(pTargetRunHeader->GetTargetPosition());
+  Double_t targetSemiAxis[2] = {pTargetRunHeader->GetLongAxis() / 2. 
+                                 * TMath::Cos(targetSlantAngle*TMath::DegToRad()),
+                                 pTargetRunHeader->GetShortAxis() / 2. };
+
+   
+  Int_t nEvent = rec->GetEntries(); 
+  cout<<"Number of Event "<<nEvent<<endl;
+
+  Double_t refTime = (denominatorCutTC.timeWindow[0] + denominatorCutTC.timeWindow[1]) / 2;
+  // Setup MEGPhysicsSelection
+  MEGPhysicsSelection selector(kFALSE, 0, kTRUE);
+  selector.SetThresholds(EBeamPeriodID::kBeamPeriod2022, kTRUE);
+  
+  // update threshoulds and parameters to custom values
+  
+  selector.fPrePositronSelectTimePositronGamma[0] = denominatorCutTC.timeWindow[0] - refTime;
+  selector.fPrePositronSelectTimePositronGamma[1] = denominatorCutTC.timeWindow[1] - refTime;
+  selector.fEPositron[0] = 42 * MeV;
+  selector.fEPositron[1] = 56 * MeV;
+  
+  selector.fSPXNHitsForEfficiencyEstimation = denominatorCutTC.nClusterHitThreshold;
+
+  selector.fTargetZOffset = targetOffset[2];
+  selector.fTargetYOffset = targetOffset[1];
+  selector.fTargetZ = targetSemiAxis[0];
+  selector.fTargetY = targetSemiAxis[1];
+  
+  for (Int_t iEvent = 0; iEvent < nEvent; iEvent++) {
+    
+    if (iEvent % 5000 == 1) {
+      cout<<iEvent<<" events finished..."<<endl;
+    } 
+    rec->GetEntry(iEvent);
+    
+    // Trigger
+    auto mask = pEventHeader->Getmask();
+    if (triggerMask.find(mask) == triggerMask.end()) continue;
+    
+    if (!pPositronArray || !pSPXTrackArray || !pDCHTrackArray || !pDCHHitArray) continue;
+    
+    // Select positrons
+    vector<Bool_t> selected;
+    Bool_t oriSelectAPositron = selector.fSelectAPositron;
+    selector.fSelectAPositron = kFALSE;
+    selector.PositronSelection(selected, pPositronArray, false); 
+    
+    vector<vector<int>> hits_id;
+    vector<int> idx_positron;
+    vector<double> mom_target;
+    vector<double> phi_target;
+    vector<int> theta_target;
+
+    // Loop over selected positrons
+    for (Int_t ipos=0; ipos < pPositronArray->GetEntriesFast(); ipos++) {
+      
+      if (!selected[ipos]) {
+	continue;
+      }
+	
+      MEGGLBPositron* pPositron = (MEGGLBPositron*)pPositronArray->At(ipos);
+      MEGDCHTrack* pDCHTrack = (MEGDCHTrack*)pDCHTrackArray->At(pPositron->GetDCHTrackIndex());
+      MEGSPXTrack* pSPXTrack = (MEGSPXTrack*)pSPXTrackArray->At(pPositron->GetSPXTrackIndex());
+      MEGDCHSPXMatchedTrack* pDCHSPXMatchedTrack = (MEGDCHSPXMatchedTrack*)pDCHSPXMatchedTrackArray->At(pPositron->GetDCHTrackIndex());
+      
+      if (pPositron->GetDCHTrackIndex() != pDCHSPXMatchedTrack->GetMatchedTrackIdAt(0)) {
+	cout << "Not matching tracks" << endl;
+	continue;
+      }
+      
+      // Fill track info
+      idx_positron.push_back(ipos);
+      MEGStateVector* stateTarget = (MEGStateVector*)pDCHTrack->GetStateVectorTarget();
+      mom_target.push_back(stateTarget->GetP());
+      phi_target.push_back(stateTarget->GetPhi());
+      theta_target.push_back(stateTarget->GetTheta());
+
+      // Loop over hits in the DCH Track to have good hit index
+      Int_t nhits = pDCHTrack->Getnhits();
+      vector<int> hit_idx;
+
+      for (Int_t ihit=0; ihit < nhits; ihit++) {
+	
+	// Skip hits not used in the fit
+	if (!pDCHTrack->GetHasPredictionAt(ihit)) {
+	  continue;
+	}
+	
+	MEGDCHHit* aHit = (MEGDCHHit*)pDCHHitArray->At(pDCHTrack->GethitindexAt(ihit));
+	if (!aHit->Getgood()) {
+	  continue;
+	}
+	hit_idx.push_bach(pDCHTrack->GethitindexAt(ihit));
+      }
+      
+      // Do the same on spx hits
+      Int_t nhits_spx = pSPXTrack->Getnhits();
+      
+      for (Int_t ihit=0; ihit < nhits_spx; ihit++) {
+	
+	// Skip hits not used in the fit
+	if (pSPXTrack->GetSkippedAt(ihit)) {
+	  continue;
+	}
+	MEGSPXHit* aHit = (MEGSPXHit*)pSPXHitArray->At(pSPXTrack->GethitindexAt(ihit));
+	hit_idx.push_back(pSPXTrack->GethitindexAt(ihit) + 1920);
+      }
+
+      // Fill vector with index from this track
+      hits_id.push_bach(hit_idx);
+      
+    } // Positron Loop
+   
+    // Loop over all DCH Hits and then over all SPX Hits to write the training file
+    for (int i=0; i<pDCHHitArray->GetEntriesFast(); i++) {
+      MEGDCHHit* aHit = (MEGDCHHit*)pDCHHitArray->At(i);
+      if (!aHit) {
+	cout << "No hit at idx i = " << i << endl;
+	continue;
+      }
+      // Get all info of the hit
+      int wire = aHit->Getwire();
+      double time = aHit->Gettime();
+      int layer = aHit->Getplane();
+      double x = ;
+      double y = ;
+      double z = aHit->Getztimeff();
+
+    }
+    
+    
+  } // Event Loop
+   
+}
+
+//______________________________________________________________________________
+map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun, Int_t maxNRuns)
+{
+   // Return map of run list (runnumber, file path)
+   // If list is empty, get all rec files in the dir
+
+
+
+   // map of input rec files
+   map<Int_t, TString> files;
+
+   if (!runlist.Length()) {
+      // Get all the files in a directory
+      auto *pDir = opendir(dir.Data());
+      if (pDir == nullptr) {
+         perror("opendir");
+         return files;
+      }
+      dirent *pDirEnt = nullptr;
+      while ((pDirEnt = readdir(pDir)) != nullptr) {
+         string file = pDirEnt->d_name;
+         if (file.find("rec") != string::npos
+             && file.find(".root") != string::npos) {
+            smatch results;
+            if (regex_match(file, results, regex("rec(\\d+).root"))) {
+               files[atoi(results[1].str().data())] = dir + file.c_str();
+            }
+         }
+      }
+      if (closedir(pDir) != 0) {
+         perror("closedir");
+         return files;
+      }
+
+   } else {
+      // Read a run list
+
+      ifstream runListFile(runlist);
+      string str;
+      vector<char> delimiters {'\t', ',', ' '};
+      while (getline(runListFile, str)) {
+         for (auto && deli: delimiters) {
+            if (str.find(deli) != string::npos) {
+               auto a = split(str, deli);
+               str = a[0];
+               break;
+            }
+         }
+         
+         Int_t run = -1;
+         try {
+            run = stoi(str);
+         } catch (const invalid_argument& e) {
+            //cout << "[" << i << "]: " << "invalid argument" << endl;
+            continue;
+         }
+         
+         struct stat sta;
+         TString recfile;
+         // check subdir exists
+         if (!stat(Form("%s/%03dxxx", dir.Data(), run /1000), &sta)) {
+            recfile = dir + Form("%03dxxx/rec%05d.root", run / 1000, run);
+         } else {
+            recfile = dir + Form("rec%05d.root", run);
+         }
+         ifstream ifs(recfile.Data());
+         if (!ifs.is_open()) continue;
+         ifs.close();
+         
+         files[run] = recfile.Data();
+      }
+   }
+
+
+
+   Int_t nAdded(0);
+   for (auto it = files.begin(); it != files.end();) {
+      if (it->first < startRun || (maxNRuns>0 && ++nAdded >= maxNRuns)) {
+         it = files.erase(it);
+      } else {
+         ++it;
+      }
+   }
+   
+   return files;
+}
