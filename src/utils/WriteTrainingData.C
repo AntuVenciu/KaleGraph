@@ -298,12 +298,75 @@ void WriteTrainingData()
       double x = ;
       double y = ;
       double z = aHit->Getztimeff();
+      int is_good = 0; // not good
+      int track_id = -1; // not good
+      double mom = 1e30; // not good
+      double phi = 1e30; // not good
+      double theta = 1e30; // not good
+
+      // Check if it is a good hit
+      int track_idx = 0;
+      for (auto ids : hits_id) {
+	if (find(i, ids.begin(), ids.end()) != ids.end()) {
+	  is_good = 1;
+	  track_id = track_idx;
+	  mom = mom_target.at(track_idx);
+	  phi = phi_target.at(track_idx);
+	  theta = theta_target.at(track_idx);
+	  break;
+	}
+	track_idx++;
+      }
+
+      // write
+      outputfile << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
 
     }
     
+    for (int i=0; i<pSPXHitArray->GetEntriesFast(); i++) {
+      MEGSPXHit* aHit = (MEGSPXHit*)pSPXHitArray->At(i);
+      if (!aHit) {
+	cout << "No hit at idx i = " << i << endl;
+	continue;
+      }
+      // Get all info of the hit
+      int pixel = aHit->Getpixelid() + 1920;
+      double time = aHit->Gettime();
+      int layer = 10;
+      double x = ;
+      double y = ;
+      double z = aHit->Getztimeff();
+      int is_good = 0; // not good
+      int track_id = -1; // not good
+      double mom = 1e30; // not good
+      double phi = 1e30; // not good
+      double theta = 1e30; // not good
+
+      // Check if it is a good hit
+      int track_idx = 0;
+      for (auto ids : hits_id) {
+	if (find(i, ids.begin(), ids.end()) != ids.end()) {
+	  is_good = 1;
+	  track_id = track_idx;
+	  mom = mom_target.at(track_idx);
+	  phi = phi_target.at(track_idx);
+	  theta = theta_target.at(track_idx);
+	  break;
+	}
+	track_idx++;
+      }
+
+      // write
+      outputfile << i + pDCHHitArray->GetEntriesFast() << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+
+    }
     
   } // Event Loop
-   
+  
+  // Close file
+  cout << outputfilename << " written!" << endl;
+  outfile.close();
+
 }
 
 //______________________________________________________________________________
