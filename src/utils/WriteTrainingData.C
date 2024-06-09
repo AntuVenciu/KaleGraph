@@ -39,6 +39,7 @@ at the beginning.
 #   include <ROMETreeInfo.h>
 #   include "include/generated/MEGAllFolders.h"
 #   include "glb/MEGPhysicsSelection.h"
+#   include "cyldch/MEGCYLDCHGeometry.h"
 #else
    class ROMETreeInfo;
 #endif
@@ -73,9 +74,21 @@ vector<string> split(const string& input, char delimiter)
 void WriteTrainingData()
 {
   
-  TString outputrecdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/";
-  TString outputfilename = outputrecdir + "1e6DataSet_CDCH_SPX.txt";
-  ofstream outputfile = open(outputfilename);
+  // Train, Test and Val output files
+  TString outputrecdir = "./"; //"/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/";
+  TString outputfilename_train = outputrecdir + "1e6TrainSet_CDCH_SPX.txt";
+  ofstream outputfile_train;
+  outputfile_train.open(outputfilename_train.Data());
+  TString outputfilename_test = outputrecdir + "1e6TestSet_CDCH_SPX.txt";
+  ofstream outputfile_test;
+  outputfile_test.open(outputfilename_test.Data());
+  TString outputfilename_val = outputrecdir + "1e6ValSet_CDCH_SPX.txt";
+  ofstream outputfile_val;
+  outputfile_val.open(outputfilename_val.Data());
+
+  int nMaxEvents = 100000;
+  double f_train = 0.7;
+  double f_test = 0.25;
 
   TString inputrecdir = "/meg/data1/offline/processes/20240209/425xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
   TString runList = "";
@@ -137,6 +150,11 @@ void WriteTrainingData()
   TBranch *bInfoS;
   ROMETreeInfo *pInfoS;
   MEGTargetRunHeader *pTargetRunHeader = (MEGTargetRunHeader*)gROOT->FindObject("TargetRunHeader");
+  // Setting up geometry                                                                  
+  auto pMEGParameters = (MEGMEGParameters*)(file0->Get("MEGParameters"));               
+  auto pWireRunHeaders = static_cast<TClonesArray*>(file0->Get("CYLDCHWireRunHeader")); 
+  auto fCYLDCHGeometry = MEGCYLDCHGeometry::GetInstance(pWireRunHeaders);
+
   pInfoS = new ROMETreeInfo;
   pEventHeader = new MEGEventHeader;
   rec->SetBranchStatus("*", 0); 
@@ -199,7 +217,7 @@ void WriteTrainingData()
   selector.fTargetZ = targetSemiAxis[0];
   selector.fTargetY = targetSemiAxis[1];
   
-  for (Int_t iEvent = 0; iEvent < nEvent; iEvent++) {
+  for (Int_t iEvent = 0; iEvent < min(nMaxEvents, nEvent); iEvent++) {
     
     if (iEvent % 5000 == 1) {
       cout<<iEvent<<" events finished..."<<endl;
@@ -263,7 +281,7 @@ void WriteTrainingData()
 	if (!aHit->Getgood()) {
 	  continue;
 	}
-	hit_idx.push_bach(pDCHTrack->GethitindexAt(ihit));
+	hit_idx.push_back(pDCHTrack->GethitindexAt(ihit));
       }
       
       // Do the same on spx hits
@@ -280,7 +298,7 @@ void WriteTrainingData()
       }
 
       // Fill vector with index from this track
-      hits_id.push_bach(hit_idx);
+      hits_id.push_back(hit_idx);
       
     } // Positron Loop
    
@@ -295,9 +313,13 @@ void WriteTrainingData()
       int wire = aHit->Getwire();
       double time = aHit->Gettime();
       int layer = aHit->Getplane();
-      double x = ;
-      double y = ;
-      double z = aHit->Getztimeff();
+      TVector3 wireVec = {0., 0., aHit->Getztimediff()};
+      wireVec = fCYLDCHGeometry->LocalToGlobal(wire, wireVec);
+      double x = wireVec.X();
+      double y = wireVec.Y();
+      double z = wireVec.Z();
+      // badly reconstructed hits
+      if (abs(x) > 50 || abs(y) > 50 || abs(z) > 200 ) continue;
       int is_good = 0; // not good
       int track_id = -1; // not good
       double mom = 1e30; // not good
@@ -307,7 +329,7 @@ void WriteTrainingData()
       // Check if it is a good hit
       int track_idx = 0;
       for (auto ids : hits_id) {
-	if (find(i, ids.begin(), ids.end()) != ids.end()) {
+	if (find(ids.begin(), ids.end(), i) != ids.end()) {
 	  is_good = 1;
 	  track_id = track_idx;
 	  mom = mom_target.at(track_idx);
@@ -319,7 +341,15 @@ void WriteTrainingData()
       }
 
       // write
-      outputfile << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      if (iEvent < f_train * min(nMaxEvents, nEvent)) {
+	outputfile_train << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      }
+      else if (iEvent < (f_train + f_test) * min(nMaxEvents, nEvent)) {
+	outputfile_test << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      }
+      else {
+	outputfile_val << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      }
 
     }
     
@@ -333,9 +363,9 @@ void WriteTrainingData()
       int pixel = aHit->Getpixelid() + 1920;
       double time = aHit->Gettime();
       int layer = 10;
-      double x = ;
-      double y = ;
-      double z = aHit->Getztimeff();
+      double x = aHit->GetxyzAt(0);
+      double y = aHit->GetxyzAt(1);
+      double z = aHit->GetxyzAt(2);
       int is_good = 0; // not good
       int track_id = -1; // not good
       double mom = 1e30; // not good
@@ -345,7 +375,7 @@ void WriteTrainingData()
       // Check if it is a good hit
       int track_idx = 0;
       for (auto ids : hits_id) {
-	if (find(i, ids.begin(), ids.end()) != ids.end()) {
+	if (find(ids.begin(), ids.end(), i) != ids.end()) {
 	  is_good = 1;
 	  track_id = track_idx;
 	  mom = mom_target.at(track_idx);
@@ -357,15 +387,27 @@ void WriteTrainingData()
       }
 
       // write
-      outputfile << i + pDCHHitArray->GetEntriesFast() << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      if (iEvent < f_train * min(nMaxEvents, nEvent)) {
+	outputfile_train << i + pDCHHitArray->GetEntriesFast() << " " << pixel << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      }
+      else if (iEvent < (f_train + f_test) * min(nMaxEvents, nEvent)) {
+	outputfile_test << i + pDCHHitArray->GetEntriesFast() << " " << pixel << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      }
+      else {
+	outputfile_val << i + pDCHHitArray->GetEntriesFast() << " " << pixel << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      }
 
     }
     
   } // Event Loop
   
-  // Close file
-  cout << outputfilename << " written!" << endl;
-  outfile.close();
+  // Close files
+  cout << outputfilename_train << " written!" << endl;
+  outputfile_train.close();
+  cout << outputfilename_test << " written!" << endl;
+  outputfile_test.close();
+  cout << outputfilename_val << " written!" << endl;
+  outputfile_val.close();
 
 }
 

@@ -25,23 +25,20 @@ def quantile(sorted_array, f):
 
 def min_dist(hits, i, j):
     """
-    Return minimum distance between wires i and j
+    Return minimum distance between hits i and j
     """
     # Properties of the hits
     #layer_i = hits[i][2]
     #layer_j = hits[j][2]
-    x_i = hits['x'][i]
-    x_j = hits['x'][j]
-    y_i = hits['y'][i]
-    y_j = hits['y'][j]
-    z_i = hits['z'][i]
-    z_j = hits['z'][j]
+    x_ij = hits['x'][i] - hits['x'][j]
+    y_ij = hits['y'][i] - hits['y'][j]
+    z_ij = hits['z'][i] - hits['z'][j]
     #phi_i = hits[i][6]
     #phi_j = hits[j][6]
     #theta_i = hits[i][7]
     #theta_j = hits[j][7]
     
-    return np.sqrt(x_i * x_j + y_i * y_j + z_i * z_j)
+    return np.sqrt(x_ij * x_ij + y_ij * y_ij + z_ij * z_ij)
 
 def calculate_edge_features(hits, edge_matrix, adj_matrix):
     """
@@ -58,26 +55,35 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
     
     # Loop over edges
     for e in edge_matrix:
-        # Get nodes
+        # Get nodes id
         i = e[0]
         j = e[1]
         
+        # get hits' IDs
+        hit_id_i = 0
+        hit_id_j = 0
+        for idx, wire in enumerate(hits['wireID']):
+            if wire == i:
+                hit_id_i = idx
+            if wire == j:
+                hit_id_j = idx
+
         # edge e features vector
         e_features = []
         
         # Calculate time diff
-        e_features.append(hits['t'][i] - hits['t'][j])
+        e_features.append(hits['t'][hit_id_i] - hits['t'][hit_id_j])
         # Calculate minimum distance
-        e_features.append(min_dist(hits, i, j))
+        e_features.append(min_dist(hits, hit_id_i, hit_id_j))
         # Get data driven weight (probability) of each connection
         # from the adjacency matrix
         e_features.append(adj_matrix[i][j])
         
         edges_features.append(e_features)
     
-    return edges_features
+    return np.array(edges_features)
 
-def build_adjacency_matrix(file_name="edgeMatrix.txt",
+def build_adjacency_matrix(file_name="/meg/home/ext-venturini_a/meg2/analyzer/KaleGraph/src/utils/edgeMatrix.txt",
                            f_cdch=0.015,
                            f_spx=0.005):
     """
@@ -150,14 +156,16 @@ def build_edge_matrix(hits_id, adj_matrix):
     hit_is_in_list = [1 if x in hits_id else 0 for x in range(0, NUM_TOT_NODES)]
 
     # Loop over hits ID to build the graph
-    for i in hits_id:
-        for j in range(i): # Just one directional graph
-            if adj_matrix[i][j] > 0:
-                # Check that id == j is in hits_id
-                if hit_is_in_list[j]:
+    for i, wire_i in enumerate(hits_id):
+        for wire_j in range(wire_i): # Just one directional graph
+            if adj_matrix[wire_i][wire_j] > 0:
+                # Check that id == wire_j is in hits_id
+                if hit_is_in_list[wire_j]:
+                    j = np.argwhere(hits_id == wire_j)
                     # Build the edge between node i and j
-                    edge_matrix.append([i, j])
-                    num_edges += 1
+                    for k in j:
+                        edge_matrix.append([i, k[0]])
+                        num_edges += 1
     
     edge_matrix = np.array(edge_matrix)
 
@@ -181,24 +189,24 @@ def build_graph(hits, adj_matrix):
     At index 2: edge matrix
     """
     # X is simple
-    X = np.array(hits['wireID'],
+    X = np.array([hits['wireID'],
                  hits['t'],
                  hits['layer'],
                  hits['x'],
                  hits['y'],
-                 hits['z'],
-                 hits['wirePhi'],
-                 hits['wireTheta'])
+                  hits['z']])
 
     # Build the adjacency matrix
-    hits_id = hits['id'] # Param 0 of hits is the hit ID
+    hits_id = hits['wireID'].astype('int') # Param 0 of hits is the hit ID
+    #print("Hits ID = ", hits_id)
     edge_matrix = build_edge_matrix(hits_id, adj_matrix)
-
+    #print(edge_matrix)
     # Build the edge_feature vector
-    R = calculate_edge_features(edge_matrix, hits)
+    R = calculate_edge_features(hits, edge_matrix, adj_matrix)
     
     # Return the graph
-    return {'x' = X, 'edge_index' = edge_matrix.T, 'edge_attr' = R}
+    print(f"X shape = {(X.T).shape}\nedge_index shape = {edge_matrix.T.shape}\nedge_attr shape = {R.shape}", )
+    return {'x' : X.T, 'edge_index' : edge_matrix.T, 'edge_attr' : R}
 
 
 if __name__ == "__main__" :
