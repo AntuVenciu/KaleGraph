@@ -76,19 +76,19 @@ void WriteTrainingData()
   
   // Train, Test and Val output files
   TString outputrecdir = "./"; //"/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/";
-  TString outputfilename_train = outputrecdir + "1e6TrainSet_CDCH_SPX.txt";
+  TString outputfilename_train = outputrecdir + "1e6TrainSet_CDCH_SPX_noSelectedPositron.txt";
   ofstream outputfile_train;
   outputfile_train.open(outputfilename_train.Data());
-  TString outputfilename_test = outputrecdir + "1e6TestSet_CDCH_SPX.txt";
+  TString outputfilename_test = outputrecdir + "1e6TestSet_CDCH_SPX_noSelectedPositron.txt";
   ofstream outputfile_test;
   outputfile_test.open(outputfilename_test.Data());
-  TString outputfilename_val = outputrecdir + "1e6ValSet_CDCH_SPX.txt";
+  TString outputfilename_val = outputrecdir + "1e6ValSet_CDCH_SPX_noSelectedPositron.txt";
   ofstream outputfile_val;
   outputfile_val.open(outputfilename_val.Data());
 
   int nMaxEvents = 100000;
   double f_train = 0.7;
-  double f_test = 0.25;
+  double f_test = 0.15;
 
   TString inputrecdir = "/meg/data1/offline/processes/20240209/425xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
   TString runList = "";
@@ -243,12 +243,15 @@ void WriteTrainingData()
     vector<int> theta_target;
 
     // Loop over selected positrons
+    int npos = 0;
     for (Int_t ipos=0; ipos < pPositronArray->GetEntriesFast(); ipos++) {
       
+      /*
       if (!selected[ipos]) {
 	continue;
       }
-	
+      */
+      
       MEGGLBPositron* pPositron = (MEGGLBPositron*)pPositronArray->At(ipos);
       MEGDCHTrack* pDCHTrack = (MEGDCHTrack*)pDCHTrackArray->At(pPositron->GetDCHTrackIndex());
       MEGSPXTrack* pSPXTrack = (MEGSPXTrack*)pSPXTrackArray->At(pPositron->GetSPXTrackIndex());
@@ -259,6 +262,8 @@ void WriteTrainingData()
 	continue;
       }
       
+      npos++;
+
       // Fill track info
       idx_positron.push_back(ipos);
       MEGStateVector* stateTarget = (MEGStateVector*)pDCHTrack->GetStateVectorTarget();
@@ -302,6 +307,8 @@ void WriteTrainingData()
       
     } // Positron Loop
    
+    if (npos == 0) continue;
+
     // Loop over all DCH Hits and then over all SPX Hits to write the training file
     for (int i=0; i<pDCHHitArray->GetEntriesFast(); i++) {
       MEGDCHHit* aHit = (MEGDCHHit*)pDCHHitArray->At(i);

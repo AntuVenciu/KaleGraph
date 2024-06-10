@@ -68,7 +68,7 @@ class GraphDataset(Dataset):
         nedges = edge_index.shape[1]
         edges_y = np.zeros(nedges)
         tot_ones = 0
-        for k, e in enumerate(edge_index):
+        for k, e in enumerate(edge_index.T):
             i = e[0]
             j = e[1]
             if hits_truth[i] and hits_truth[j]:
@@ -122,8 +122,9 @@ class GraphDataset(Dataset):
         ids = x['wireID']
         truth = x['truth']
 
-        print(f"wire id = {ids}")
-        
+        print(f"Number of hits = {len(ids)}")
+        print(f"Number of edges = {len(truth)}")
+
         # pixel geometry for 2D visualization
         pixel_geo = np.loadtxt("/meg/home/ext-venturini_a/meg2/analyzer/KaleGraph/src/utils/spxGeometry.txt")
 
@@ -140,6 +141,7 @@ class GraphDataset(Dataset):
 
         # plot nodes and edges:
         for k, e in enumerate(graph['edge_index'].T):
+            print(f"Edge number {k} = {e}")
             # hit IDs and properties
             i = ids[e[0]]
             j = ids[e[1]]
@@ -147,23 +149,23 @@ class GraphDataset(Dataset):
             color_i = colors[int(truth_i)]
             truth_j = truth[e[1]]
             color_j = colors[int(truth_j)]
+            hittype_i, x_i, y_i = plot_graph.calculate_coordinates(int(i), pixel_geo)
             if i not in drawn_hits:
-                hittype_i, x_i, y_i = plot_graph.calculate_coordinates(int(i), pixel_geo)
                 plt.errorbar(x_i, y_i, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=color_i)
                 drawn_hits.append(i)
+            hittype_j, x_j, y_j = plot_graph.calculate_coordinates(int(j), pixel_geo)
             if j not in drawn_hits:
-                hittype_j, x_j, y_j = plot_graph.calculate_coordinates(int(j), pixel_geo)
                 plt.errorbar(x_j, y_j, fmt=fmts[hittype_j], alpha=.6, markersize=10, color=color_j)
                 drawn_hits.append(j)
-
             # decide color of edge: red if correct not found,  blue if correct found, grey if not correct not found
 
             if y[k] == 1:
                 ecolor = 'blue'
-            elif y[k] == 0 and truth_i + truth_j < 2:
+            if y[k] == 0 and truth_i + truth_j < 2:
                 ecolor = 'yellow'
-            elif y[k] == 0 and truth_i + truth_j == 2:
+            if y[k] == 0 and truth_i + truth_j >= 2:
                 ecolor= 'red'
-            plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-', alpha=.5)
+            plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-')
 
+        plt.axis('equal')
         plt.show()

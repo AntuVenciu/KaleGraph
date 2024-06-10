@@ -132,7 +132,7 @@ def build_adjacency_matrix(file_name="/meg/home/ext-venturini_a/meg2/analyzer/Ka
                 norm = norm_spx
                 cut = cut_spx
 
-            if occurrence_matrix[i][j] > cut and norm > 0:
+            if occurrence_matrix[i][j] >= cut and norm > 0:
                 adj_matrix[i][j] = occurrence_matrix[i][j] / norm
                 num_edges += 1
                 
@@ -153,12 +153,12 @@ def build_edge_matrix(hits_id, adj_matrix):
 
     # Create a vector of bools with 1 if hit is in hit_id
     # and 0 if it is not
-    hit_is_in_list = [1 if x in hits_id else 0 for x in range(0, NUM_TOT_NODES)]
+    hit_is_in_list = [1 if x in hits_id else 0 for x in range(NUM_TOT_NODES + 1)]
 
     # Loop over hits ID to build the graph
     for i, wire_i in enumerate(hits_id):
         for wire_j in range(wire_i): # Just one directional graph
-            if adj_matrix[wire_i][wire_j] > 0:
+            if adj_matrix[wire_i][wire_j] >= 0:
                 # Check that id == wire_j is in hits_id
                 if hit_is_in_list[wire_j]:
                     j = np.argwhere(hits_id == wire_j)
@@ -170,9 +170,9 @@ def build_edge_matrix(hits_id, adj_matrix):
     edge_matrix = np.array(edge_matrix)
 
     # Print outs
-    #print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
-    #print(f"Number of edges = {num_edges}")
-    #print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
+    print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
+    print(f"Number of edges = {num_edges}")
+    print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
     #print(f"EDGE MATRIX =\n", edge_matrix)
 
     return edge_matrix
