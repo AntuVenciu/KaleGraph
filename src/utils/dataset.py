@@ -27,8 +27,8 @@ def load_data(filename):
     """
     hitID, wireID, time, layer, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
     events_separators = [i for i, k in enumerate(hitID) if k==0]
-    print(f"Events starting indexes = {events_separators}")
-    print(f"Number of events = {len(events_separators)}")
+    #print(f"Events starting indexes = {events_separators}")
+    #print(f"Number of events = {len(events_separators)}")
     feature_names = ['wireID', 't', 'layer', 'x', 'y', 'z', 'phiWire', 'thetaWire', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
     events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
                't' : time[events_separators[i] : events_separators[i + 1]],
@@ -65,16 +65,16 @@ class GraphDataset(Dataset):
         Given hits label, create a vector of 1s and 0s if
         the edge connects two true hits.
         """
-        nedges = edge_index.shape[1]
-        edges_y = np.zeros(nedges)
-        tot_ones = 0
+        #nedges = edge_index.shape[1]
+        edges_y = np.array([1 if hits_truth[e[0]] and hits_truth[e[1]] else 0 for e in edge_index.T ]) #np.zeros(nedges)
+        """
         for k, e in enumerate(edge_index.T):
             i = e[0]
             j = e[1]
             if hits_truth[i] and hits_truth[j]:
                 edges_y[k] = 1
-                tot_ones += 1
-        print(f"Fraction of ones / zeros = {tot_ones / (nedges - tot_ones)}")
+        """
+        #print(f"Fraction of ones / zeros = {tot_ones / (nedges - tot_ones)}")
         return edges_y
         
 

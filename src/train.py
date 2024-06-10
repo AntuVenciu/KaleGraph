@@ -27,13 +27,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
         data = data.to(device)
         output = model(data.x, data.edge_index, data.edge_attr)
         y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-        print(f"y shape = {data.y.shape}\noutput shape = {output.shape}")
-        print(f"true = {y.numpy()}\npredicted = {output}")
+        #print(f"y shape = {data.y.shape}\noutput shape = {output.shape}")
+        #print(f"true = {y.numpy()}\npredicted = {output}")
         # weight loss function by a factor = N_0 / N_1 to count the unbalance beween 1 and 0'2
         #print(f"Number of zeros = {len(y < 0.5)}")
         #print(f"Number of ones = {len(y > 0.5)}")
-        class_weight = torch.Tensor([len(y < 0.5) / max(len(y > 0.5), 0.001)])
-        print(f"Fraction of edges with a good connection = {len(data.y < 0.5) / max(len(data.y > 0.5), 1)}")
+        class_weight = torch.Tensor([len(y < 0.5) / len(y > 0.5)])
+        #print(f"Fraction of edges with a good connection = {len(data.y < 0.5) / max(len(data.y > 0.5), 1)}")
         loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight)
         loss.backward()
         optimizer.step()
@@ -148,7 +148,7 @@ def main():
     torch.manual_seed(args.seed)
 
     # Load adjacency matrix
-    adj_matrix = build_adjacency_matrix(f_cdch=0., f_spx=0.)
+    adj_matrix = build_adjacency_matrix()
     
     # Load the dataset
     train_kwargs = {'batch_size': args.batch_size}
@@ -165,10 +165,10 @@ def main():
                  'test':  test_file,
                  'val': val_file}
 
-    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 1}
+    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 6}
     
     train_set = GraphDataset(partition['train'], adj_matrix)
-    train_set.plot(4)
+    #train_set.plot(4)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'], adj_matrix)
     test_loader = DataLoader(test_set, **params)

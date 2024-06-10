@@ -132,7 +132,7 @@ def build_adjacency_matrix(file_name="/meg/home/ext-venturini_a/meg2/analyzer/Ka
                 norm = norm_spx
                 cut = cut_spx
 
-            if occurrence_matrix[i][j] >= cut and norm > 0:
+            if occurrence_matrix[i][j] > cut and norm > 0:
                 adj_matrix[i][j] = occurrence_matrix[i][j] / norm
                 num_edges += 1
                 
@@ -170,9 +170,9 @@ def build_edge_matrix(hits_id, adj_matrix):
     edge_matrix = np.array(edge_matrix)
 
     # Print outs
-    print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
-    print(f"Number of edges = {num_edges}")
-    print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
+    #print(f"Number of nodes = {np.array(hit_is_in_list).sum()}")
+    #print(f"Number of edges = {num_edges}")
+    #print(f"edge_matrix with shape = ({edge_matrix.shape[0]} x {edge_matrix.shape[1]})")
     #print(f"EDGE MATRIX =\n", edge_matrix)
 
     return edge_matrix
