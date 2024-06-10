@@ -205,7 +205,7 @@ def build_graph(hits, adj_matrix):
     R = calculate_edge_features(hits, edge_matrix, adj_matrix)
     
     # Return the graph
-    print(f"X shape = {(X.T).shape}\nedge_index shape = {edge_matrix.T.shape}\nedge_attr shape = {R.shape}", )
+    #print(f"X shape = {(X.T).shape}\nedge_index shape = {edge_matrix.T.shape}\nedge_attr shape = {R.shape}", )
     return {'x' : X.T, 'edge_index' : edge_matrix.T, 'edge_attr' : R}
 
 

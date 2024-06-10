@@ -25,13 +25,19 @@ def train(args, model, device, train_loader, optimizer, epoch):
     losses = []
     for batch_idx, data in enumerate(train_loader):
         data = data.to(device)
-        optimizer.zero_grad()
         output = model(data.x, data.edge_index, data.edge_attr)
-        print(f"y shape = {data.y.shape}\noutput shape = {output.shape}")
         y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-        loss = F.binary_cross_entropy(output, y, reduction='mean')
+        print(f"y shape = {data.y.shape}\noutput shape = {output.shape}")
+        print(f"true = {y.numpy()}\npredicted = {output}")
+        # weight loss function by a factor = N_0 / N_1 to count the unbalance beween 1 and 0'2
+        #print(f"Number of zeros = {len(y < 0.5)}")
+        #print(f"Number of ones = {len(y > 0.5)}")
+        class_weight = torch.Tensor([len(y < 0.5) / max(len(y > 0.5), 0.001)])
+        print(f"Fraction of edges with a good connection = {len(data.y < 0.5) / max(len(data.y > 0.5), 1)}")
+        loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight)
         loss.backward()
         optimizer.step()
+        optimizer.zero_grad()
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx, len(train_loader.dataset),
@@ -45,31 +51,41 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
 def validate(model, device, val_loader):
     model.eval()
-    opt_thlds, accs = [], []
-    for batch_idx, data in enumerate(val_loader):
-        data = data.to(device)
-        output = model(data.x, data.edge_index, data.edge_attr)
-        y, output = data.y, output.squeeze()
-        loss = F.binary_cross_entropy(output, y, reduction='mean').item()
+    opt_thlds, accs, tps, fns = [], [], [], []
+    with torch.no_grad():
+        for batch_idx, data in enumerate(val_loader):
+            data = data.to(device)
+            output = model(data.x, data.edge_index, data.edge_attr)
+            y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
+            loss = F.binary_cross_entropy(output, y, reduction='mean').item()
         
-        # define optimal threshold (thld) where TPR = TNR 
-        diff, opt_thld, opt_acc = 100, 0, 0
-        best_tpr, best_tnr = 0, 0
-        for thld in np.arange(0.001, 0.5, 0.001):
-            TP = torch.sum((y==1) & (output>thld)).item()
-            TN = torch.sum((y==0) & (output<thld)).item()
-            FP = torch.sum((y==0) & (output>thld)).item()
-            FN = torch.sum((y==1) & (output<thld)).item()
-            acc = (TP+TN)/(TP+TN+FP+FN)
-            TPR, TNR = TP/(TP+FN), TN/(TN+FP)
-            delta = abs(TPR-TNR)
-            if (delta < diff): 
-                diff, opt_thld, opt_acc = delta, thld, acc
+            # define optimal threshold (thld) where TPR = TNR 
+            diff, opt_thld, opt_acc = 100, 0, 0
+            best_tpr, best_tnr = 0, 0
+            for thld in np.arange(0.5, 1, 0.05):
+                TP = torch.sum((y==1) & (output>thld)).item()
+                TN = torch.sum((y==0) & (output<thld)).item()
+                FP = torch.sum((y==0) & (output>thld)).item()
+                FN = torch.sum((y==1) & (output<thld)).item()
+                acc = (TP+TN)/(TP+TN+FP+FN)
+                if TP + FN == 0:
+                    TPR = 0
+                else:
+                    TPR = TP / (TP + FN)
+                if TN + FP == 0:
+                    TNR = 0
+                else:
+                    TNR = TN / (TN + FP)
+                delta = abs(TPR-TNR)
+                if (delta < diff):
+                    diff, opt_thld, opt_acc, best_tpr = delta, thld, acc, TPR
 
-        opt_thlds.append(opt_thld)
-        accs.append(opt_acc)
-
+            opt_thlds.append(opt_thld)
+            accs.append(opt_acc)
+            tps.append(best_tpr)
+    
     print("... val accuracy = ", np.mean(accs))
+    print("... val TPR = ", np.mean(tps))
     return np.mean(opt_thlds) 
 
 def test(model, device, test_loader, thld=0.5):
@@ -88,7 +104,8 @@ def test(model, device, test_loader, thld=0.5):
             FN = torch.sum((data.y==1).squeeze() & 
                            (output<thld).squeeze()).item()            
             acc = (TP+TN)/(TP+TN+FP+FN)
-            loss = F.binary_cross_entropy(output.squeeze(1), data.y, 
+            y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
+            loss = F.binary_cross_entropy(output, y, 
                                           reduction='mean').item()
             accs.append(acc)
             losses.append(loss)
@@ -131,7 +148,7 @@ def main():
     torch.manual_seed(args.seed)
 
     # Load adjacency matrix
-    adj_matrix = build_adjacency_matrix()
+    adj_matrix = build_adjacency_matrix(f_cdch=0., f_spx=0.)
     
     # Load the dataset
     train_kwargs = {'batch_size': args.batch_size}
@@ -140,28 +157,30 @@ def main():
     home_dir = "/meg/home/ext-venturini/meg2/analyzer/KaleGraph"
     inputdir = f"/meg/home/ext-venturini_a/meg2/analyzer"
     
-    train_file = f"{inputdir}/1e6TrainSet_CDCH_SPX.txt"
-    test_file = f"{inputdir}/1e6TestSet_CDCH_SPX.txt"
-    val_file = f"{inputdir}/1e6ValSet_CDCH_SPX.txt"
-
-    graphs = load_data(train_file)
+    train_file = f"{inputdir}/1e6TrainSet_CDCH_SPX_noSelectedPositron.txt"
+    test_file = f"{inputdir}/1e6TestSet_CDCH_SPX_noSelectedPositron.txt"
+    val_file = f"{inputdir}/1e6ValSet_CDCH_SPX_noSelectedPositron.txt"
 
     partition = {'train': train_file,
                  'test':  test_file,
                  'val': val_file}
-    
-    print(f"Total number of training samples = {len(graphs)}.")
 
-    params = {'batch_size': 1, 'shuffle' : True, 'num_workers' : 6}
+    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 1}
     
     train_set = GraphDataset(partition['train'], adj_matrix)
+    train_set.plot(4)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'], adj_matrix)
     test_loader = DataLoader(test_set, **params)
     val_set = GraphDataset(partition['val'], adj_matrix)
     val_loader = DataLoader(val_set, **params)
     
-    NUM_NODE_FEATURES = 6  
+    print(f"Number of train data samples : {train_set.len()}")
+    print(f"Number of tests data samples : {test_set.len()}")
+    print(f"Number of valid data samples : {val_set.len()}")
+
+    # Set to the correct number of features in utils/dataset.py
+    NUM_NODE_FEATURES = 6
     NUM_EDGE_FEATURES = 3
 
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES).to(device)

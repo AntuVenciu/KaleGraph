@@ -16,6 +16,7 @@ from torch_geometric.utils import to_undirected
 from torch_geometric.transforms import ToUndirected
 
 from . import build_graph as bg
+from . import plot_graph
 
 
 def load_data(filename):
@@ -26,6 +27,8 @@ def load_data(filename):
     """
     hitID, wireID, time, layer, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
     events_separators = [i for i, k in enumerate(hitID) if k==0]
+    print(f"Events starting indexes = {events_separators}")
+    print(f"Number of events = {len(events_separators)}")
     feature_names = ['wireID', 't', 'layer', 'x', 'y', 'z', 'phiWire', 'thetaWire', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
     events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
                't' : time[events_separators[i] : events_separators[i + 1]],
@@ -64,11 +67,14 @@ class GraphDataset(Dataset):
         """
         nedges = edge_index.shape[1]
         edges_y = np.zeros(nedges)
+        tot_ones = 0
         for k, e in enumerate(edge_index):
             i = e[0]
             j = e[1]
             if hits_truth[i] and hits_truth[j]:
                 edges_y[k] = 1
+                tot_ones += 1
+        print(f"Fraction of ones / zeros = {tot_ones / (nedges - tot_ones)}")
         return edges_y
         
 
@@ -100,3 +106,64 @@ class GraphDataset(Dataset):
         data.num_nodes = len(x)
 
         return data
+
+    def plot(self, idx):
+        """
+        Plot a graph
+        """
+        import matplotlib.pyplot as plt
+        
+        from . import plot_graph as pg
+
+        #Initialize graph
+        graph = bg.build_graph(self.hits_dataset[idx], self.adj_matrix)
+        y = self.evaluate_edge_truth(graph['edge_index'], self.hits_dataset[idx]['truth'])
+        x = self.hits_dataset[idx]
+        ids = x['wireID']
+        truth = x['truth']
+
+        print(f"wire id = {ids}")
+        
+        # pixel geometry for 2D visualization
+        pixel_geo = np.loadtxt("/meg/home/ext-venturini_a/meg2/analyzer/KaleGraph/src/utils/spxGeometry.txt")
+
+        # colors
+        colors = ["red", "blue"] # red for bad hits, blue for good hits 
+        fmts = ["o", "s"] # circle for cdch hits, square for spx hits 
+        
+        plt.figure(1)
+        plt.title("Example Graph in x-y view")
+        plt.xlabel("X [cm]")
+        plt.ylabel("Y [cm]")
+        
+        drawn_hits = []
+
+        # plot nodes and edges:
+        for k, e in enumerate(graph['edge_index'].T):
+            # hit IDs and properties
+            i = ids[e[0]]
+            j = ids[e[1]]
+            truth_i = truth[e[0]]
+            color_i = colors[int(truth_i)]
+            truth_j = truth[e[1]]
+            color_j = colors[int(truth_j)]
+            if i not in drawn_hits:
+                hittype_i, x_i, y_i = plot_graph.calculate_coordinates(int(i), pixel_geo)
+                plt.errorbar(x_i, y_i, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=color_i)
+                drawn_hits.append(i)
+            if j not in drawn_hits:
+                hittype_j, x_j, y_j = plot_graph.calculate_coordinates(int(j), pixel_geo)
+                plt.errorbar(x_j, y_j, fmt=fmts[hittype_j], alpha=.6, markersize=10, color=color_j)
+                drawn_hits.append(j)
+
+            # decide color of edge: red if correct not found,  blue if correct found, grey if not correct not found
+
+            if y[k] == 1:
+                ecolor = 'blue'
+            elif y[k] == 0 and truth_i + truth_j < 2:
+                ecolor = 'yellow'
+            elif y[k] == 0 and truth_i + truth_j == 2:
+                ecolor= 'red'
+            plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-', alpha=.5)
+
+        plt.show()
