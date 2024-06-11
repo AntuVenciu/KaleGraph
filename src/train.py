@@ -29,10 +29,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
         y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
         #print(f"y shape = {data.y.shape}\noutput shape = {output.shape}")
         #print(f"true = {y.numpy()}\npredicted = {output}")
-        # weight loss function by a factor = N_0 / N_1 to count the unbalance beween 1 and 0'2
         #print(f"Number of zeros = {len(y < 0.5)}")
         #print(f"Number of ones = {len(y > 0.5)}")
-        class_weight = torch.Tensor([len(y < 0.5) / len(y > 0.5)])
+        # weight loss function by a factor = N_0 / N_1 to count the unbalance beween 1 and 0
+        class_weight = torch.Tensor([ len(y.numpy()) / y.numpy().sum()])
         #print(f"Fraction of edges with a good connection = {len(data.y < 0.5) / max(len(data.y > 0.5), 1)}")
         loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight)
         loss.backward()
@@ -119,17 +119,17 @@ def main():
 
     # Training settings
     parser = argparse.ArgumentParser(description='PyG Interaction Network Implementation')
-    parser.add_argument('--batch-size', type=int, default=64, metavar='N',
+    parser.add_argument('--batch-size', type=int, default=32, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=15, metavar='N',
+    parser.add_argument('--epochs', type=int, default=60, metavar='N',
                         help='number of epochs to train (default: 15)')
-    parser.add_argument('--lr', type=float, default=1.0, metavar='LR',
-                        help='learning rate (default: 1.0)')
-    parser.add_argument('--gamma', type=float, default=0.7, metavar='M',
-                        help='Learning rate step gamma (default: 0.7)')
-    parser.add_argument('--step-size', type=int, default=5,
+    parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+                        help='learning rate (default: 0.001)')
+    parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
+                        help='Learning rate step gamma (default: 0.1)')
+    parser.add_argument('--step-size', type=int, default=3,
                         help='Learning rate step size')
     parser.add_argument('--dry-run', action='store_true', default=False,
                         help='quickly check a single pass')
@@ -154,8 +154,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
     
-    home_dir = "/meg/home/ext-venturini/meg2/analyzer/KaleGraph"
-    inputdir = f"/meg/home/ext-venturini_a/meg2/analyzer"
+    inputdir = f"../dataset"
     
     train_file = f"{inputdir}/1e6TrainSet_CDCH_SPX_noSelectedPositron.txt"
     test_file = f"{inputdir}/1e6TestSet_CDCH_SPX_noSelectedPositron.txt"
@@ -184,6 +183,7 @@ def main():
     NUM_EDGE_FEATURES = 3
 
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES).to(device)
+    model = torch.compile(model)
     total_trainable_params = sum(p.numel() for p in model.parameters())
     print('total trainable params:', total_trainable_params)
     
@@ -226,9 +226,9 @@ def main():
     plt.title("KaleGraph Training")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.plot(args.epochs, output['train_loss'], label='Training', color='blue')
-    plt.plot(args.epochs, output['test_loss'], label='Test', color='orange')
-    plt.plot(args.epochs, output['val_loss'], label='Validation', color='red')
+    plt.plot(np.linspace(1, args.epochs, 1), output['train_loss'], label='Training', color='blue')
+    plt.plot(np.linspace(1, args.epochs, 1), output['test_loss'], label='Test', color='orange')
+    plt.plot(np.linspace(1, args.epochs, 1), output['val_loss'], label='Validation', color='red')
 
     plt.legend()
     plt.show()
