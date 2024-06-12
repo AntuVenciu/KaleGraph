@@ -6,6 +6,7 @@ b) create a unique dictionary with also y true labels and phi and p and theta
 of the particle for training.
 """
 import os
+from time import time
 
 import numpy as np
 import pandas as pd
@@ -55,8 +56,11 @@ class GraphDataset(Dataset):
         super(GraphDataset, self).__init__(None, transform, pre_transform)
         self.file = datafile
         self.adj_matrix = adj_matrix
+        #t0 = time()
         self.hits_dataset = load_data(self.file)
-
+        #t1 = time()
+        #print(f"{t1 - t0:.3f} s to load dataset")
+        
     def len(self):
         return len(self.hits_dataset)
 
@@ -82,7 +86,9 @@ class GraphDataset(Dataset):
         # Load attributes of the graph
         # Here we use some different name convensions for more easy references
         # to literature
+        #t0 = time()
         graph = bg.build_graph(self.hits_dataset[idx], self.adj_matrix)
+        #t1 = time()
         x = torch.from_numpy(graph['x'])
         edge_attr = torch.from_numpy(graph['edge_attr'])
         edge_index = torch.from_numpy(graph['edge_index'])
@@ -104,7 +110,9 @@ class GraphDataset(Dataset):
                     edge_attr=edge_attr,
                     y=y, pid=pid, mom=mom, phi=phi, theta=theta)
         data.num_nodes = len(x)
-
+        #t2 = time()
+        
+        #print(f"{t1 - t0:.3f} s to prepare a graph = {(t1 - t0) / (t2 - t0) * 100:.2f} %  of time in an event")
         return data
 
     def plot(self, idx):

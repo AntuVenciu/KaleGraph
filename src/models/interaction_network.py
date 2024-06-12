@@ -42,7 +42,6 @@ class ObjectModel(nn.Module):
     def forward(self, C):
         return self.layers(C)
 
-
 class InteractionNetwork(MessagePassing):
     def __init__(self, hidden_size, node_features_dim, edge_features_dim):
         super(InteractionNetwork, self).__init__(aggr='add', 
