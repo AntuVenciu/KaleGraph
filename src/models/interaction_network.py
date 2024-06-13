@@ -19,6 +19,7 @@ class RelationalModel(nn.Module):
         self.layers = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=0.1),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, output_size),
@@ -36,6 +37,7 @@ class ObjectModel(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
+            nn.Dropout(p=0.1),
             nn.Linear(hidden_size, output_size),
         )
 
@@ -43,9 +45,14 @@ class ObjectModel(nn.Module):
         return self.layers(C)
 
 class InteractionNetwork(MessagePassing):
-    def __init__(self, hidden_size, node_features_dim, edge_features_dim):
-        super(InteractionNetwork, self).__init__(aggr='add', 
+    def __init__(self,
+                 hidden_size,
+                 node_features_dim,
+                 edge_features_dim,
+                 time_steps=1):
+        super(InteractionNetwork, self).__init__(aggr='max', 
                                                  flow='source_to_target')
+        
         self.R1 = RelationalModel(2 * node_features_dim + edge_features_dim, edge_features_dim, hidden_size)
         
         self.O = ObjectModel(node_features_dim + edge_features_dim, node_features_dim, hidden_size)
@@ -53,13 +60,19 @@ class InteractionNetwork(MessagePassing):
         self.R2 = RelationalModel(2 * node_features_dim + edge_features_dim, 1, hidden_size)
         
         self.E: Tensor = Tensor()
-        
 
+        self.T = time_steps
+        
     def forward(self, x: Tensor, edge_index: Tensor, edge_attr: Tensor) -> Tensor:
 
         # propagate_type: (x: Tensor, edge_attr: Tensor)
-        x_tilde = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=None)
-
+        x_tilde = x
+        self.E = edge_attr
+        for t in range(self.T):
+            x_tilde = self.propagate(edge_index, x=x_tilde, edge_attr=self.E, size=None)
+        #print(f"x_tilde shape = {x_tilde.shape}\nx shape = {x.shape}\nx_tilde = {x_tilde}\nx = {x}")
+        #print(f"E shape = {self.E.shape}\nedge attr shape = {edge_attr.shape}\nE = {self.E}\nedge attr = {edge_attr}")
+        
         m2 = torch.cat([x_tilde[edge_index[1]],
                         x_tilde[edge_index[0]],
                         self.E], dim=1)
