@@ -14,6 +14,47 @@ import numpy as np
 import torch
 
 
+def load_data(filename):
+    """
+    Load hits data from a file
+    and transform them into a pandas dataframe.
+    Separate events looking at hit ID
+    """
+    hitID, wireID, time, layer, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
+    events_separators = [i for i, k in enumerate(hitID) if k==0]
+    #print(f"Events starting indexes = {events_separators}")
+    #print(f"Number of events = {len(events_separators)}")
+    feature_names = ['wireID', 't', 'layer', 'x', 'y', 'z', 'phiWire', 'thetaWire', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
+    events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
+               't' : time[events_separators[i] : events_separators[i + 1]] * 1e9,
+               'layer' : layer[events_separators[i] : events_separators[i + 1]],
+               'x' : x[events_separators[i] : events_separators[i + 1]],
+               'y' : y[events_separators[i] : events_separators[i + 1]],
+               'z' : z[events_separators[i] : events_separators[i + 1]],
+               'truth' : truth[events_separators[i] : events_separators[i + 1]],
+               'trackID' : trackID[events_separators[i] : events_separators[i + 1]],
+               'mom' : mom[events_separators[i] : events_separators[i + 1]],
+               'trackPhi' : trackPhi[events_separators[i] : events_separators[i + 1]],
+               'trackTheta' : trackTheta[events_separators[i] : events_separators[i + 1]]}
+              for i in range(0, len(events_separators) - 1)]
+
+    return events
+
+
+def filter_hits(hits, ampl_cut=0.025, charge_cut=5e-10):
+    """
+    Apply simple cuts to filter noise hits
+    """
+    hits_features = list(hits.keys())
+    filter = (hits['ampl0'] >= ampl_cut | hits['ampl1'] >= ampl_cut) & (hits['charge0'] >= charge_cut | hits['charge1'] >= charge_cut) 
+    filtered_hits = {}
+
+    # Fill the new dictionary
+    for key in hits_features:
+        filtered_hits.update({key : hits[key][filter]})
+
+    return filtered_hits
+        
 def quantile(sorted_array, f):
     """
     Evaluate value of array at f-th quantile of the sorted array
@@ -84,7 +125,9 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
         # Calculate time diff
         e_features.append(hits['t'][hit_id_i] - hits['t'][hit_id_j])
         # Calculate minimum distance
-        #e_features.append(min_dist(hits, hit_id_i, hit_id_j))
+        e_features.append(min_dist(hits, hit_id_i, hit_id_j)) # Min dist
+        e_features.append(hits['z'][hit_id_i] - hits['z'][hit_id_j]) # Delta z
+        e_features.append(np.arctan2(hits['y'][hit_id_i], hits['x'][hit_id_i]) - np.arctan2(hits['y'][hit_id_j], hits['x'][hit_id_j])) # Delta Phi
         # Get data driven weight (probability) of each connection
         # from the adjacency matrix
         e_features.append(adj_matrix[int(hits['wireID'][hit_id_i])][int(hits['wireID'][hit_id_j])])#e_features.append(adj_matrix[i][j])
@@ -233,14 +276,18 @@ def build_graph(hits, adj_matrix):
     At index 1: matrix of edge features R of shape = (num_edges, num_edge_features)
     At index 2: edge matrix
     """
+
+    # Filter hits first
+    hits = filter_hits(hits)
+    
     # X is simple
-    X = np.array([hits['wireID'],
-                 hits['t'],
+    X = np.array(#[hits['wireID'],
+                 [hits['t'],
                  #hits['layer'],
                  hits['x'],
                  hits['y'],
-                  hits['z']])
-
+                 hits['z']])
+    
     # Build the adjacency matrix
     hits_id = hits['wireID'].astype('int') # Param 0 of hits is the hit ID
     #print("Hits ID = ", hits_id)

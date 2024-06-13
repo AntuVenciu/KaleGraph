@@ -20,32 +20,6 @@ from . import build_graph as bg
 from . import plot_graph
 
 
-def load_data(filename):
-    """
-    Load hits data from a file
-    and transform them into a pandas dataframe.
-    Separate events looking at hit ID
-    """
-    hitID, wireID, time, layer, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
-    events_separators = [i for i, k in enumerate(hitID) if k==0]
-    #print(f"Events starting indexes = {events_separators}")
-    #print(f"Number of events = {len(events_separators)}")
-    feature_names = ['wireID', 't', 'layer', 'x', 'y', 'z', 'phiWire', 'thetaWire', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
-    events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
-               't' : time[events_separators[i] : events_separators[i + 1]],
-               'layer' : layer[events_separators[i] : events_separators[i + 1]],
-               'x' : x[events_separators[i] : events_separators[i + 1]],
-               'y' : y[events_separators[i] : events_separators[i + 1]],
-               'z' : z[events_separators[i] : events_separators[i + 1]],
-               'truth' : truth[events_separators[i] : events_separators[i + 1]],
-               'trackID' : trackID[events_separators[i] : events_separators[i + 1]],
-               'mom' : mom[events_separators[i] : events_separators[i + 1]],
-               'trackPhi' : trackPhi[events_separators[i] : events_separators[i + 1]],
-               'trackTheta' : trackTheta[events_separators[i] : events_separators[i + 1]]}
-              for i in range(0, len(events_separators) - 1)]
-
-    return events
-
 class GraphDataset(Dataset):
     def __init__(self,
                  datafile,
@@ -57,7 +31,7 @@ class GraphDataset(Dataset):
         self.file = datafile
         self.adj_matrix = adj_matrix
         #t0 = time()
-        self.hits_dataset = load_data(self.file)
+        self.hits_dataset = bg.load_data(self.file)
         #t1 = time()
         #print(f"{t1 - t0:.3f} s to load dataset")
         
