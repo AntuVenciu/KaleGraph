@@ -13,6 +13,7 @@ from torch import optim
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
 from torch.optim.lr_scheduler import StepLR
+from torch.profiler import profile, record_function, ProfilerActivity
 
 from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset, load_data
@@ -24,20 +25,21 @@ def train(args, model, device, train_loader, optimizer, epoch):
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
+        #t0 = time()
         data = data.to(device)
         output = model(data.x, data.edge_index, data.edge_attr)
         y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-        #print(f"y shape = {data.y.shape}\noutput shape = {output.shape}")
-        #print(f"true = {y.numpy()}\npredicted = {output}")
-        #print(f"Number of zeros = {len(y < 0.5)}")
-        #print(f"Number of ones = {len(y > 0.5)}")
+        yn = y.numpy()
+        if yn.sum() == 0:
+            continue
         # weight loss function by a factor = N_0 / N_1 to count the unbalance beween 1 and 0
-        class_weight = torch.Tensor([ len(y.numpy()) / y.numpy().sum()])
-        #print(f"Fraction of edges with a good connection = {len(data.y < 0.5) / max(len(data.y > 0.5), 1)}")
+        class_weight = torch.Tensor([ len(yn) / yn.sum()])
         loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
+        #t1 = time()
+        #print(f"time for the whole batch = {t1 - t0:.3f} s")
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx, len(train_loader.dataset),
@@ -57,12 +59,15 @@ def validate(model, device, val_loader):
             data = data.to(device)
             output = model(data.x, data.edge_index, data.edge_attr)
             y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-            loss = F.binary_cross_entropy(output, y, reduction='mean').item()
-        
+            if y.numpy().sum() == 0:
+                continue
+            class_weight = torch.Tensor([ len(y.numpy()) / y.numpy().sum()])
+            loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight).item()
+            
             # define optimal threshold (thld) where TPR = TNR 
             diff, opt_thld, opt_acc = 100, 0, 0
             best_tpr, best_tnr = 0, 0
-            for thld in np.arange(0.5, 1, 0.05):
+            for thld in np.arange(0.05, 1, 0.1):
                 TP = torch.sum((y==1) & (output>thld)).item()
                 TN = torch.sum((y==0) & (output<thld)).item()
                 FP = torch.sum((y==0) & (output>thld)).item()
@@ -76,6 +81,7 @@ def validate(model, device, val_loader):
                     TNR = 0
                 else:
                     TNR = TN / (TN + FP)
+                #print(f"threshold {thld}: acc = {acc:.3f}, TP = {TPR:.3f}, TN = {TNR:.3f}")
                 delta = abs(TPR-TNR)
                 if (delta < diff):
                     diff, opt_thld, opt_acc, best_tpr = delta, thld, acc, TPR
@@ -123,13 +129,13 @@ def main():
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
                         help='input batch size for testing (default: 1000)')
-    parser.add_argument('--epochs', type=int, default=60, metavar='N',
-                        help='number of epochs to train (default: 15)')
+    parser.add_argument('--epochs', type=int, default=10, metavar='N',
+                        help='number of epochs to train (default: 10)')
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
                         help='learning rate (default: 0.001)')
     parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
                         help='Learning rate step gamma (default: 0.1)')
-    parser.add_argument('--step-size', type=int, default=3,
+    parser.add_argument('--step-size', type=int, default=1,
                         help='Learning rate step size')
     parser.add_argument('--dry-run', action='store_true', default=False,
                         help='quickly check a single pass')
@@ -139,7 +145,7 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
-    parser.add_argument('--hidden-size', type=int, default=40,
+    parser.add_argument('--hidden-size', type=int, default=50,
                         help='Number of hidden units per layer')
 
     args = parser.parse_args()
@@ -148,7 +154,7 @@ def main():
     torch.manual_seed(args.seed)
 
     # Load adjacency matrix
-    adj_matrix = build_adjacency_matrix()
+    adj_matrix = build_adjacency_matrix(f_cdch=0.1, f_spx=0.1)
     
     # Load the dataset
     train_kwargs = {'batch_size': args.batch_size}
@@ -164,7 +170,7 @@ def main():
                  'test':  test_file,
                  'val': val_file}
 
-    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 6}
+    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 0}
     
     train_set = GraphDataset(partition['train'], adj_matrix)
     #train_set.plot(4)
@@ -179,10 +185,10 @@ def main():
     print(f"Number of valid data samples : {val_set.len()}")
 
     # Set to the correct number of features in utils/dataset.py
-    NUM_NODE_FEATURES = 6
-    NUM_EDGE_FEATURES = 3
+    NUM_NODE_FEATURES = 4
+    NUM_EDGE_FEATURES = 5
 
-    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES).to(device)
+    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=2).to(device)
     model = torch.compile(model)
     total_trainable_params = sum(p.numel() for p in model.parameters())
     print('total trainable params:', total_trainable_params)
@@ -218,6 +224,7 @@ def main():
         """
 
     # Plotting of history
+    """
     import matplotlib.pyplot as plt
     
     
@@ -226,14 +233,16 @@ def main():
     plt.title("KaleGraph Training")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.plot(np.linspace(1, args.epochs, 1), output['train_loss'], label='Training', color='blue')
-    plt.plot(np.linspace(1, args.epochs, 1), output['test_loss'], label='Test', color='orange')
-    plt.plot(np.linspace(1, args.epochs, 1), output['val_loss'], label='Validation', color='red')
+    plt.plot(np.linspace(1, args.epochs, args.epochs), output['train_loss'], label='Training', color='blue')
+    plt.plot(np.linspace(1, args.epochs, args.epochs), output['test_loss'], label='Test', color='orange')
+    plt.plot(np.linspace(1, args.epochs, args.epochs), output['val_loss'], label='Validation', color='red')
 
     plt.legend()
     plt.show()
+    """
 
 if __name__ == '__main__':
+    torch.set_num_threads(1)
     main()
 
 

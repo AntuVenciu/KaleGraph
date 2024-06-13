@@ -20,14 +20,18 @@ def load_data(filename):
     and transform them into a pandas dataframe.
     Separate events looking at hit ID
     """
-    hitID, wireID, time, layer, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
+    hitID, wireID, time, layer, ch0, ch1, ampl0, ampl1, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
     events_separators = [i for i, k in enumerate(hitID) if k==0]
     #print(f"Events starting indexes = {events_separators}")
     #print(f"Number of events = {len(events_separators)}")
-    feature_names = ['wireID', 't', 'layer', 'x', 'y', 'z', 'phiWire', 'thetaWire', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
+    feature_names = ['wireID', 't', 'layer', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x', 'y', 'z', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
     events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
                't' : time[events_separators[i] : events_separators[i + 1]] * 1e9,
                'layer' : layer[events_separators[i] : events_separators[i + 1]],
+               'charge0' : ch0[events_separators[i] : events_separators[i + 1]],
+               'charge1' : ch1[events_separators[i] : events_separators[i + 1]],
+               'ampl0' : ampl0[events_separators[i] : events_separators[i + 1]],
+               'ampl1' : ampl1[events_separators[i] : events_separators[i + 1]],
                'x' : x[events_separators[i] : events_separators[i + 1]],
                'y' : y[events_separators[i] : events_separators[i + 1]],
                'z' : z[events_separators[i] : events_separators[i + 1]],
