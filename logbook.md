@@ -40,3 +40,10 @@ Add ReLU at the beginning -> This is terrible
 Set f_cdch and f_spx to 0.05
 
 -12062024 "python3 train.py --batch-size 32 --lr 0.002 --step-size 1 --hidden-size 40" 1.15 0.5 0.68 0.68
+
+### ATTENTION: Very important!
+
+A new training goal is needed for the algorithm to converge:
+1. Either we try to classify good nodes
+2. Or we try to classify CONSECUTIVE edges between good nodes
+We concentrate on 2. since it is more like what has been already developed.

@@ -16,8 +16,8 @@ from torch.optim.lr_scheduler import StepLR
 from torch.profiler import profile, record_function, ProfilerActivity
 
 from models.interaction_network import InteractionNetwork
-from utils.dataset import GraphDataset, load_data
-from utils.build_graph import build_adjacency_matrix
+from utils.dataset import GraphDataset
+from utils.build_graph import build_adjacency_matrix, load_data
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -154,7 +154,7 @@ def main():
     torch.manual_seed(args.seed)
 
     # Load adjacency matrix
-    adj_matrix = build_adjacency_matrix(f_cdch=0.1, f_spx=0.1)
+    adj_matrix = build_adjacency_matrix(f_cdch=0.05)
     
     # Load the dataset
     train_kwargs = {'batch_size': args.batch_size}
@@ -162,9 +162,9 @@ def main():
     
     inputdir = f"../dataset"
     
-    train_file = f"{inputdir}/1e6TrainSet_CDCH_SPX_noSelectedPositron.txt"
-    test_file = f"{inputdir}/1e6TestSet_CDCH_SPX_noSelectedPositron.txt"
-    val_file = f"{inputdir}/1e6ValSet_CDCH_SPX_noSelectedPositron.txt"
+    train_file = f"{inputdir}/1e6TrainSet_CDCH.txt"
+    test_file = f"{inputdir}/1e6TestSet_CDCH.txt"
+    val_file = f"{inputdir}/1e6ValSet_CDCH.txt"
 
     partition = {'train': train_file,
                  'test':  test_file,
@@ -173,7 +173,7 @@ def main():
     params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 0}
     
     train_set = GraphDataset(partition['train'], adj_matrix)
-    #train_set.plot(4)
+    #train_set.plot(0)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'], adj_matrix)
     test_loader = DataLoader(test_set, **params)
@@ -185,7 +185,7 @@ def main():
     print(f"Number of valid data samples : {val_set.len()}")
 
     # Set to the correct number of features in utils/dataset.py
-    NUM_NODE_FEATURES = 4
+    NUM_NODE_FEATURES = 8
     NUM_EDGE_FEATURES = 5
 
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=2).to(device)
