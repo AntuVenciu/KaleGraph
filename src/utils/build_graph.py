@@ -20,11 +20,11 @@ def load_data(filename):
     and transform them into a pandas dataframe.
     Separate events looking at hit ID
     """
-    hitID, wireID, time, layer, ch0, ch1, ampl0, ampl1, x, y, z, truth, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
+    hitID, wireID, time, layer, ch0, ch1, ampl0, ampl1, x, y, z, truth, nextHit, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
     events_separators = [i for i, k in enumerate(hitID) if k==0]
     #print(f"Events starting indexes = {events_separators}")
     #print(f"Number of events = {len(events_separators)}")
-    feature_names = ['wireID', 't', 'layer', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x', 'y', 'z', 'truth', 'trackID', 'mom', 'trackPhi', 'trackTheta']
+    feature_names = ['wireID', 't', 'layer', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x', 'y', 'z', 'truth', 'nextHit', 'trackID', 'mom', 'trackPhi', 'trackTheta']
     events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
                't' : time[events_separators[i] : events_separators[i + 1]] * 1e9,
                'layer' : layer[events_separators[i] : events_separators[i + 1]],
@@ -36,6 +36,7 @@ def load_data(filename):
                'y' : y[events_separators[i] : events_separators[i + 1]],
                'z' : z[events_separators[i] : events_separators[i + 1]],
                'truth' : truth[events_separators[i] : events_separators[i + 1]],
+               'nextHit' : nextHit[events_separators[i] : events_separators[i + 1]],
                'trackID' : trackID[events_separators[i] : events_separators[i + 1]],
                'mom' : mom[events_separators[i] : events_separators[i + 1]],
                'trackPhi' : trackPhi[events_separators[i] : events_separators[i + 1]],
@@ -45,12 +46,12 @@ def load_data(filename):
     return events
 
 
-def filter_hits(hits, ampl_cut=0.025, charge_cut=5e-10):
+def filter_hits(hits, ampl_cut=0.01, charge_cut=5e-10):
     """
     Apply simple cuts to filter noise hits
     """
     hits_features = list(hits.keys())
-    filter = (hits['ampl0'] >= ampl_cut | hits['ampl1'] >= ampl_cut) & (hits['charge0'] >= charge_cut | hits['charge1'] >= charge_cut) 
+    filter = ((hits['ampl0'] >= ampl_cut) | (hits['ampl1'] >= ampl_cut)) & ((hits['charge0'] >= charge_cut) | (hits['charge1'] >= charge_cut)) 
     filtered_hits = {}
 
     # Fill the new dictionary
@@ -282,16 +283,17 @@ def build_graph(hits, adj_matrix):
     """
 
     # Filter hits first
-    hits = filter_hits(hits)
+    #hits = filter_hits(hits)
     
     # X is simple
-    X = np.array(#[hits['wireID'],
-                 [hits['t'],
-                 #hits['layer'],
-                 hits['x'],
-                 hits['y'],
-                 hits['z']])
-    
+    X = np.array([hits['t'],
+                  hits['charge0'],
+                  hits['charge1'],
+                  hits['ampl0'],
+                  hits['ampl1'],
+                  hits['x'],
+                  hits['y'],
+                  hits['z']])
     # Build the adjacency matrix
     hits_id = hits['wireID'].astype('int') # Param 0 of hits is the hit ID
     #print("Hits ID = ", hits_id)

@@ -38,20 +38,19 @@ class GraphDataset(Dataset):
     def len(self):
         return len(self.hits_dataset)
 
-    def evaluate_edge_truth(self, edge_index, hits_truth):
+    def evaluate_edge_truth(self, edge_index, next_hits, trackID):
         """
         Given hits label, create a vector of 1s and 0s if
-        the edge connects two true hits.
+        the edge connects two consecutive true hits.
         """
         #nedges = edge_index.shape[1]
-        edges_y = np.array([1 if hits_truth[e[0]] and hits_truth[e[1]] else 0 for e in edge_index.T ]) #np.zeros(nedges)
-        """
+        edges_y = np.array([1 if (next_hits[e[0]] == e[1] or next_hits[e[1]] == e[0]) else 0 for e in edge_index.T]) #np.zeros(nedges)
+        
         for k, e in enumerate(edge_index.T):
-            i = e[0]
-            j = e[1]
-            if hits_truth[i] and hits_truth[j]:
-                edges_y[k] = 1
-        """
+            if next_hits[e[0]] >= 0 or next_hits[e[1]] >= 0:
+                print(f"Edge {k} between hits {e[0]}-{e[1]}: {e[0]} -> {next_hits[e[0]]} and {e[1]} -> {next_hits[e[1]]}. Edge = {edges_y[k]}")
+            
+        
         #print(f"Fraction of ones / zeros = {tot_ones / (nedges - tot_ones)}")
         return edges_y
         
@@ -67,7 +66,7 @@ class GraphDataset(Dataset):
         edge_attr = torch.from_numpy(graph['edge_attr'])
         edge_index = torch.from_numpy(graph['edge_index'])
         # evaluate truth of edges
-        y = torch.from_numpy(self.evaluate_edge_truth(graph['edge_index'], self.hits_dataset[idx]['truth']))
+        y = torch.from_numpy(self.evaluate_edge_truth(graph['edge_index'], self.hits_dataset[idx]['nextHit'], self.hits_dataset[idx]['trackID']))
         pid = torch.from_numpy(self.hits_dataset[idx]['trackID'])
         mom = torch.from_numpy(self.hits_dataset[idx]['mom'])
         phi = torch.from_numpy(self.hits_dataset[idx]['trackPhi'])
@@ -99,7 +98,7 @@ class GraphDataset(Dataset):
 
         #Initialize graph
         graph = bg.build_graph(self.hits_dataset[idx], self.adj_matrix)
-        y = self.evaluate_edge_truth(graph['edge_index'], self.hits_dataset[idx]['truth'])
+        y = self.evaluate_edge_truth(graph['edge_index'], self.hits_dataset[idx]['nextHit'], self.hits_dataset[idx]['trackID'])
         x = self.hits_dataset[idx]
         ids = x['wireID']
         truth = x['truth']
@@ -108,7 +107,7 @@ class GraphDataset(Dataset):
         print(f"Number of edges = {len(truth)}")
 
         # pixel geometry for 2D visualization
-        pixel_geo = np.loadtxt("/meg/home/ext-venturini_a/meg2/analyzer/KaleGraph/src/utils/spxGeometry.txt")
+        pixel_geo = np.loadtxt("utils/spxGeometry.txt")
 
         # colors
         colors = ["red", "blue"] # red for bad hits, blue for good hits 
@@ -143,11 +142,13 @@ class GraphDataset(Dataset):
 
             if y[k] == 1:
                 ecolor = 'blue'
-            if y[k] == 0 and truth_i + truth_j < 2:
-                ecolor = 'yellow'
-            if y[k] == 0 and truth_i + truth_j >= 2:
+            #if y[k] == 0 and truth_i + truth_j < 2:
+            #    ecolor = 'yellow'
+            if y[k] == 0:
                 ecolor= 'red'
             plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-')
+            
+            
 
         plt.axis('equal')
         plt.show()
