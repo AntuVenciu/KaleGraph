@@ -47,3 +47,4 @@ A new training goal is needed for the algorithm to converge:
 1. Either we try to classify good nodes
 2. Or we try to classify CONSECUTIVE edges between good nodes
 We concentrate on 2. since it is more like what has been already developed.
+We train with 5% cut on CDCH connection. NO SPX data
