@@ -111,7 +111,7 @@ def test(model, device, test_loader, thld=0.5):
                            (output<thld).squeeze()).item()            
             acc = (TP+TN)/(TP+TN+FP+FN)
             y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-            loss = F.binary_cross_entropy(output, y, 
+            loss = F.binary_cross_entropy_with_logits(output, y, 
                                           reduction='mean').item()
             accs.append(acc)
             losses.append(loss)
@@ -141,7 +141,7 @@ def main():
                         help='quickly check a single pass')
     parser.add_argument('--seed', type=int, default=1, metavar='S',
                         help='random seed (default: 1)')
-    parser.add_argument('--log-interval', type=int, default=10, metavar='N',
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
@@ -186,7 +186,7 @@ def main():
 
     # Set to the correct number of features in utils/dataset.py
     NUM_NODE_FEATURES = 8
-    NUM_EDGE_FEATURES = 5
+    NUM_EDGE_FEATURES = 7
 
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=2).to(device)
     model = torch.compile(model)

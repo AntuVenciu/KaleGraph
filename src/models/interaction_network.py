@@ -77,7 +77,7 @@ class InteractionNetwork(MessagePassing):
                         x_tilde[edge_index[0]],
                         self.E], dim=1)
         m2 = m2.clone().to(torch.float32) # Double -> Float conversion
-        return torch.sigmoid(self.R2(m2))
+        return self.R2(m2)#torch.sigmoid(self.R2(m2))
 
     def message(self, x_i, x_j, edge_attr):
         # x_i --> incoming

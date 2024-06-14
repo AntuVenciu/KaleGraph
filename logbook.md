@@ -48,3 +48,10 @@ A new training goal is needed for the algorithm to converge:
 2. Or we try to classify CONSECUTIVE edges between good nodes
 We concentrate on 2. since it is more like what has been already developed.
 We train with 5% cut on CDCH connection. NO SPX data
+Add as a feature for the edges the average charge and amplitude of the two nodes
+
+Try filtering only good hits
+-14062024 "python3 train.py --batch-size 128 --lr 0.001 --step-size 1 --hidden-size 40" 1.29 0.16 0.68 0.68
+
+Use a smaller dataset for quicker answers (10k events)
+-14062024

@@ -45,12 +45,6 @@ class GraphDataset(Dataset):
         """
         #nedges = edge_index.shape[1]
         edges_y = np.array([1 if (next_hits[e[0]] == e[1] or next_hits[e[1]] == e[0]) else 0 for e in edge_index.T]) #np.zeros(nedges)
-        
-        for k, e in enumerate(edge_index.T):
-            if next_hits[e[0]] >= 0 or next_hits[e[1]] >= 0:
-                print(f"Edge {k} between hits {e[0]}-{e[1]}: {e[0]} -> {next_hits[e[0]]} and {e[1]} -> {next_hits[e[1]]}. Edge = {edges_y[k]}")
-            
-        
         #print(f"Fraction of ones / zeros = {tot_ones / (nedges - tot_ones)}")
         return edges_y
         

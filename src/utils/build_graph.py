@@ -28,8 +28,8 @@ def load_data(filename):
     events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
                't' : time[events_separators[i] : events_separators[i + 1]] * 1e9,
                'layer' : layer[events_separators[i] : events_separators[i + 1]],
-               'charge0' : ch0[events_separators[i] : events_separators[i + 1]],
-               'charge1' : ch1[events_separators[i] : events_separators[i + 1]],
+               'charge0' : ch0[events_separators[i] : events_separators[i + 1]] * 1e9,
+               'charge1' : ch1[events_separators[i] : events_separators[i + 1]] * 1e9,
                'ampl0' : ampl0[events_separators[i] : events_separators[i + 1]],
                'ampl1' : ampl1[events_separators[i] : events_separators[i + 1]],
                'x' : x[events_separators[i] : events_separators[i + 1]],
@@ -43,7 +43,7 @@ def load_data(filename):
                'trackTheta' : trackTheta[events_separators[i] : events_separators[i + 1]]}
               for i in range(0, len(events_separators) - 1)]
 
-    return events
+    return events[:min(len(events_separators) - 1, 10000)]
 
 
 def filter_hits(hits, ampl_cut=0.01, charge_cut=5e-10):
@@ -51,7 +51,8 @@ def filter_hits(hits, ampl_cut=0.01, charge_cut=5e-10):
     Apply simple cuts to filter noise hits
     """
     hits_features = list(hits.keys())
-    filter = ((hits['ampl0'] >= ampl_cut) | (hits['ampl1'] >= ampl_cut)) & ((hits['charge0'] >= charge_cut) | (hits['charge1'] >= charge_cut)) 
+    filter = hits['truth'] == 1
+    #filter = ((hits['ampl0'] >= ampl_cut) | (hits['ampl1'] >= ampl_cut)) & ((hits['charge0'] >= charge_cut) | (hits['charge1'] >= charge_cut)) 
     filtered_hits = {}
 
     # Fill the new dictionary
@@ -133,8 +134,9 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
         e_features.append(min_dist(hits, hit_id_i, hit_id_j)) # Min dist
         e_features.append(hits['z'][hit_id_i] - hits['z'][hit_id_j]) # Delta z
         e_features.append(np.arctan2(hits['y'][hit_id_i], hits['x'][hit_id_i]) - np.arctan2(hits['y'][hit_id_j], hits['x'][hit_id_j])) # Delta Phi
-        # Get data driven weight (probability) of each connection
-        # from the adjacency matrix
+        e_features.append(hits['ampl0'][hit_id_i] + hits['ampl1'][hit_id_i] + hits['ampl0'][hit_id_j] + hits['ampl1'][hit_id_j]) # Amplitude
+        e_features.append(hits['charge0'][hit_id_i] + hits['charge1'][hit_id_i] + hits['charge0'][hit_id_j] + hits['charge1'][hit_id_j]) # charge
+        # Get data driven weight (probability) of each connection from the adjacency matrix
         e_features.append(adj_matrix[int(hits['wireID'][hit_id_i])][int(hits['wireID'][hit_id_j])])#e_features.append(adj_matrix[i][j])
         
         edges_features.append(e_features)
@@ -283,7 +285,7 @@ def build_graph(hits, adj_matrix):
     """
 
     # Filter hits first
-    #hits = filter_hits(hits)
+    hits = filter_hits(hits)
     
     # X is simple
     X = np.array([hits['t'],
