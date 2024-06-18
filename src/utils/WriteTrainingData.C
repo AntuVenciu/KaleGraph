@@ -46,6 +46,68 @@ at the beginning.
 using namespace MEG;
 using namespace std;
 
+vector<int> wireIDSorting(vector<double> values, vector<int> ids) {
+
+  // initialize original index locations
+  vector<size_t> idx(values.size());
+  iota(idx.begin(), idx.end(), 0);
+
+  // sort indexes based on comparing values in v
+  // using std::stable_sort instead of std::sort
+  // to avoid unnecessary index re-orderings
+  // when v contains elements of equal values 
+  stable_sort(idx.begin(), idx.end(),
+	      [&values](size_t i1, size_t i2) {return values[i1] < values[i2];});
+
+  vector<int> copy_vector; 
+  for (auto i : idx) {
+    copy_vector.push_back(ids.at(i));
+  }
+  return copy_vector;
+
+}
+
+vector<double> zSorting(vector<double> values, vector<int> ids) {
+
+  // initialize original index locations
+  vector<size_t> idx(values.size());
+  iota(idx.begin(), idx.end(), 0);
+
+  // sort indexes based on comparing values in v
+  // using std::stable_sort instead of std::sort
+  // to avoid unnecessary index re-orderings
+  // when v contains elements of equal values 
+  stable_sort(idx.begin(), idx.end(),
+	      [&values](size_t i1, size_t i2) {return values[i1] < values[i2];});
+
+  vector<double> copy_vector;
+  for (auto i : idx) {
+    copy_vector.push_back(values.at(i));
+  }
+  return copy_vector;
+
+}
+
+vector<double> phiSorting(vector<double> values, vector<double> zValues) {
+
+  // initialize original index locations
+  vector<size_t> idx(values.size());
+  iota(idx.begin(), idx.end(), 0);
+
+  // sort indexes based on comparing values in v
+  // using std::stable_sort instead of std::sort
+  // to avoid unnecessary index re-orderings
+  // when v contains elements of equal values 
+  stable_sort(idx.begin(), idx.end(),
+	      [&zValues](size_t i1, size_t i2) {return zValues[i1] < zValues[i2];});
+
+  vector<double> copy_vector;
+  for (auto i : idx) {
+    copy_vector.push_back(values.at(i));
+  }
+  return copy_vector;
+
+}
 
 map<Int_t, TString> PrepareRunList(TString dir, TString list, Int_t startRun=0, Int_t maxNRuns=-1);
 
@@ -142,6 +204,8 @@ void WriteTrainingData()
   TClonesArray *pDCHTrackArray = new TClonesArray("MEGDCHTrack");
   TBranch *bDCHHit;
   TClonesArray *pDCHHitArray = new TClonesArray("MEGDCHHit");
+  TBranch *bDCHHitRecResult;
+  TClonesArray *pDCHHitRecResultArray = new TClonesArray("MEGCYLDCHHitRecResult");
   TBranch *bSPXTrack;
   TClonesArray *pSPXTrackArray = new TClonesArray("MEGSPXTrack");
   TBranch *bDCHSPXMatchedTrack;
@@ -168,6 +232,8 @@ void WriteTrainingData()
   rec->SetBranchStatus("dchtracks.*", 1);
   rec->SetBranchStatus("dchhits", 1);
   rec->SetBranchStatus("dchhits.*", 1);
+  rec->SetBranchStatus("dchhitrecresults", 1);
+  rec->SetBranchStatus("dchhitrecresults.*", 1);
   rec->SetBranchStatus("spxclusters", 1); 
   rec->SetBranchStatus("spxclusters.*", 1); 
   rec->SetBranchStatus("spxhits", 1); 
@@ -185,6 +251,7 @@ void WriteTrainingData()
   rec->SetBranchAddress("dchspxmatchedtrack", &pDCHSPXMatchedTrackArray, &bDCHSPXMatchedTrack);
   rec->SetBranchAddress("dchtracks", &pDCHTrackArray, &bDCHTrack);
   rec->SetBranchAddress("dchhits", &pDCHHitArray, &bDCHHit);
+  rec->SetBranchAddress("dchhitrecresults", &pDCHHitRecResultArray, &bDCHHitRecResult);
   rec->SetBranchAddress("spxtracks", &pSPXTrackArray, &bSPXTrack);
 
 
@@ -274,6 +341,7 @@ void WriteTrainingData()
       // Loop over hits in the DCH Track to have good hit index
       Int_t nhits = pDCHTrack->Getnhits();
       vector<int> hit_idx;
+      vector<double> z_vec;
 
       for (Int_t ihit=0; ihit < nhits; ihit++) {
 	
@@ -286,9 +354,11 @@ void WriteTrainingData()
 	if (!aHit->Getgood()) {
 	  continue;
 	}
+	MEGStateVector* state = (MEGStateVector*)pDCHTrack->GetStateVectorAt(ihit);
 	hit_idx.push_back(pDCHTrack->GethitindexAt(ihit));
+	z_vec.push_back(state->GetZ());
       }
-      
+      /*
       // Do the same on spx hits
       Int_t nhits_spx = pSPXTrack->Getnhits();
       
@@ -301,9 +371,11 @@ void WriteTrainingData()
 	MEGSPXHit* aHit = (MEGSPXHit*)pSPXHitArray->At(pSPXTrack->GethitindexAt(ihit));
 	hit_idx.push_back(pSPXTrack->GethitindexAt(ihit) + 1920);
       }
+      */
 
-      // Fill vector with index from this track
-      hits_id.push_back(hit_idx);
+      // Fill vector with index from this track after sorting
+      vector<int> sorted_idx = wireIDSorting(z_vec, hit_idx);
+      hits_id.push_back(sorted_idx);
       
     } // Positron Loop
    
@@ -316,27 +388,58 @@ void WriteTrainingData()
 	cout << "No hit at idx i = " << i << endl;
 	continue;
       }
+      double z = aHit->Getztimediff();
+      // Cut on badly reconstructed hits
+      if (abs(z) > 200 ) continue;
+
       // Get all info of the hit
+      // Signal informations
+      MEGCYLDCHHitRecResult* aHitRes0 = (MEGCYLDCHHitRecResult*)pDCHHitRecResultArray->At(aHit->GetHitRecResultIndexAt(0));
+      MEGCYLDCHHitRecResult* aHitRes1 = (MEGCYLDCHHitRecResult*)pDCHHitRecResultArray->At(aHit->GetHitRecResultIndexAt(1));
+      double charge0 = -1;
+      double ampl0 = -1;
+      double charge1 = -1;
+      double ampl1 = -1;
+      if (aHitRes0) {
+	charge0 = aHitRes0->Getcharge();
+	ampl0 = aHitRes0->GetamplsignFullRange();
+      }
+      if (aHitRes1) {
+	charge1 = aHitRes1->Getcharge();
+	ampl1 = aHitRes1->GetamplsignFullRange();
+      }
+      // Geometry
       int wire = aHit->Getwire();
       double time = aHit->Gettime();
       int layer = aHit->Getplane();
-      TVector3 wireVec = {0., 0., aHit->Getztimediff()};
+      TVector3 wireVec = {0., 0., 0.)};
       wireVec = fCYLDCHGeometry->LocalToGlobal(wire, wireVec);
-      double x = wireVec.X();
-      double y = wireVec.Y();
-      double z = wireVec.Z();
-      // badly reconstructed hits
-      if (abs(x) > 50 || abs(y) > 50 || abs(z) > 200 ) continue;
+      double x0 = wireVec.X();
+      double y0 = wireVec.Y();
+      double z0 = wireVec.Z();
+      double sigmaz = (abs(z) > 0.5) ? 10 : 200; // if z is not reconstructed, give huge uncertainty
+      TVector3 p0;
+      TVector3 uaxis;
+      TVector3 vaxis;
+      TVector3 waxis;
+      fCYLDCHGeometry->GetLocalFrame(wire, 0., p0, uaxis, vaxis, waxis);
+      double phi = waxis.Phi();
+      double theta = waxis.Theta();
+      // Belongs to track
       int is_good = 0; // not good
       int track_id = -1; // not good
       double mom = 1e30; // not good
       double phi = 1e30; // not good
       double theta = 1e30; // not good
-
+      int next_hit_idx = -1; // not good
       // Check if it is a good hit
       int track_idx = 0;
       for (auto ids : hits_id) {
-	if (find(ids.begin(), ids.end(), i) != ids.end()) {
+	int* found_idx = find(ids.begin(), ids.end(), i); 
+	if (found_idx != ids.end()) {
+	  // Get next hit
+	  int found_hit_idx = found_idx - ids.begin();
+	  next_hit_idx = (found_hit_idx == ids.size() - 1) ? -1 : found_hit_idx + 1;
 	  is_good = 1;
 	  track_id = track_idx;
 	  mom = mom_target.at(track_idx);
@@ -348,18 +451,18 @@ void WriteTrainingData()
       }
 
       // write
-      if (iEvent < f_train * min(nMaxEvents, nEvent)) {
-	outputfile_train << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      if (iEvent < f_train * max(nMaxEvents, nEvent)) {
+	
       }
-      else if (iEvent < (f_train + f_test) * min(nMaxEvents, nEvent)) {
-	outputfile_test << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+      else if (iEvent < (f_train + f_test) * max(nMaxEvents, nEvent)) {
+	outputfile_test << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phi << " " << theta << endl;
       }
       else {
-	outputfile_val << i << " " << wire << " " << time << " " << layer << " " << x << " " << y << " " << z << " " << is_good << " " << track_id << " " << mom << " " << phi << " " << theta << endl;
+	outputfile_val << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phi << " " << theta << endl;
       }
 
     }
-    
+  /*
     for (int i=0; i<pSPXHitArray->GetEntriesFast(); i++) {
       MEGSPXHit* aHit = (MEGSPXHit*)pSPXHitArray->At(i);
       if (!aHit) {
@@ -405,7 +508,8 @@ void WriteTrainingData()
       }
 
     }
-    
+  */
+
   } // Event Loop
   
   // Close files
