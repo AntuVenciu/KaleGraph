@@ -81,7 +81,7 @@ def validate(model, device, val_loader):
                     TNR = 0
                 else:
                     TNR = TN / (TN + FP)
-                #print(f"threshold {thld}: acc = {acc:.3f}, TP = {TPR:.3f}, TN = {TNR:.3f}")
+                print(f"threshold {thld}: acc = {acc:.3f}, TP = {TPR:.3f}, TN = {TNR:.3f}")
                 delta = abs(TPR-TNR)
                 if (delta < diff):
                     diff, opt_thld, opt_acc, best_tpr = delta, thld, acc, TPR
@@ -162,9 +162,9 @@ def main():
     
     inputdir = f"../dataset"
     
-    train_file = f"{inputdir}/1e6TrainSet_CDCH.txt"
-    test_file = f"{inputdir}/1e6TestSet_CDCH.txt"
-    val_file = f"{inputdir}/1e6ValSet_CDCH.txt"
+    train_file = f"{inputdir}/1e6TrainSet_CDCH_10k.txt"
+    test_file = f"{inputdir}/1e6TestSet_CDCH_10k.txt"
+    val_file = f"{inputdir}/1e6ValSet_CDCH_10k.txt"
 
     partition = {'train': train_file,
                  'test':  test_file,
@@ -185,7 +185,7 @@ def main():
     print(f"Number of valid data samples : {val_set.len()}")
 
     # Set to the correct number of features in utils/dataset.py
-    NUM_NODE_FEATURES = 8
+    NUM_NODE_FEATURES = 12
     NUM_EDGE_FEATURES = 7
 
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=2).to(device)
