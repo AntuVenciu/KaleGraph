@@ -50,7 +50,7 @@ class InteractionNetwork(MessagePassing):
                  node_features_dim,
                  edge_features_dim,
                  time_steps=1):
-        super(InteractionNetwork, self).__init__(aggr='max', 
+        super(InteractionNetwork, self).__init__(aggr='mean', 
                                                  flow='source_to_target')
         
         self.R1 = RelationalModel(2 * node_features_dim + edge_features_dim, edge_features_dim, hidden_size)
