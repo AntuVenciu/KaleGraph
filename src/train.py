@@ -49,10 +49,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
         losses.append(loss.item())
     print("...epoch time: {0}s".format(time()-epoch_t0))
     print("...epoch {}: train loss={}".format(epoch, np.mean(losses)))
-    return np.mean(losses)
+    return losses
 
 def validate(model, device, val_loader):
     model.eval()
+    losses = []
     opt_thlds, accs, tps, fns = [], [], [], []
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
@@ -63,7 +64,24 @@ def validate(model, device, val_loader):
                 continue
             class_weight = torch.Tensor([ len(y.numpy()) / y.numpy().sum()])
             loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight).item()
-            
+            losses.append(loss)
+            TP = torch.sum((y==1) & (output>thld)).item()
+            TN = torch.sum((y==0) & (output<thld)).item()
+            FP = torch.sum((y==0) & (output>thld)).item()
+            FN = torch.sum((y==1) & (output<thld)).item()
+            acc = (TP+TN)/(TP+TN+FP+FN)
+            if TP + FN == 0:
+                TPR = 0
+            else:
+                TPR = TP / (TP + FN)
+            if TN + FP == 0:
+                TNR = 0
+            else:
+                TNR = TN / (TN + FP)
+            accs.append(acc)
+            tps.append(TPR)
+            fns.append(TNR)
+            """
             # define optimal threshold (thld) where TPR = TNR 
             diff, opt_thld, opt_acc = 100, 0, 0
             best_tpr, best_tnr = 0, 0
@@ -85,14 +103,14 @@ def validate(model, device, val_loader):
                 delta = abs(TPR-TNR)
                 if (delta < diff):
                     diff, opt_thld, opt_acc, best_tpr = delta, thld, acc, TPR
-
+            
             opt_thlds.append(opt_thld)
             accs.append(opt_acc)
             tps.append(best_tpr)
-    
+            """
     print("... val accuracy = ", np.mean(accs))
     print("... val TPR = ", np.mean(tps))
-    return np.mean(opt_thlds) 
+    return losses, accs, tps, fns #np.mean(opt_thlds) 
 
 def test(model, device, test_loader, thld=0.5):
     model.eval()
@@ -111,15 +129,16 @@ def test(model, device, test_loader, thld=0.5):
                            (output<thld).squeeze()).item()            
             acc = (TP+TN)/(TP+TN+FP+FN)
             y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
+            class_weight = torch.Tensor([len(y.numpy()) / y.numpy().sum()])
             loss = F.binary_cross_entropy_with_logits(output, y, 
-                                          reduction='mean').item()
+                                                      reduction='mean', pos_weight=class_weight).item()
             accs.append(acc)
             losses.append(loss)
             #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
 
     print('... test loss: {:.4f}\n... test accuracy: {:.4f}'
           .format(np.mean(losses), np.mean(accs)))
-    return np.mean(losses), np.mean(accs)
+    return losses, accs #np.mean(losses), np.mean(accs)
 
 def main():
 
@@ -172,12 +191,12 @@ def main():
 
     params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 0}
     
-    train_set = GraphDataset(partition['train'], adj_matrix)
+    train_set = GraphDataset(partition['train'], adj_matrix, max_size=10000)
     #train_set.plot(0)
     train_loader = DataLoader(train_set, **params)
-    test_set = GraphDataset(partition['test'], adj_matrix)
+    test_set = GraphDataset(partition['test'], adj_matrix, maxsize=1000)
     test_loader = DataLoader(test_set, **params)
-    val_set = GraphDataset(partition['val'], adj_matrix)
+    val_set = GraphDataset(partition['val'], adj_matrix, maxsize=1000)
     val_loader = DataLoader(val_set, **params)
     
     print(f"Number of train data samples : {train_set.len()}")
@@ -198,12 +217,12 @@ def main():
                        gamma=args.gamma)
 
 
-    output = {'train_loss': [], 'test_loss': [], 'test_acc': []}
+    output = {'train_loss': [], 'val_loss' : [], 'val_tpr' : [], 'val_tpr' : [], 'test_loss': [], 'test_acc': []}
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
         train_loss = train(args, model, device, train_loader, optimizer, epoch)
-        thld = validate(model, device, val_loader)
-        print('...optimal threshold', thld)
+        val_loss, val_acc, val_tpr, val_tnr = validate(model, device, val_loader)
+        #print('...optimal threshold', thld)
         test_loss, test_acc = test(model, device, test_loader, thld=thld)
         scheduler.step()
         """
@@ -213,10 +232,12 @@ def main():
                        .format(args.sample, args.construction, epoch, args.pt))
         """
 
-        output['train_loss'].append(train_loss)
-        output['test_loss'].append(test_loss)
-        output['test_acc'].append(test_acc)
-
+        output['train_loss'] += train_loss
+        output['val_loss'] += val_loss
+        output['val_tpr'] += val_tpr
+        output['test_loss'] += test_loss
+        output['test_acc'] += test_acc
+        
         """
         np.save('train_output/train{}_PyG_{}_{}GeV_redo'
                 .format(args.sample, args.construction, args.pt),
@@ -224,7 +245,7 @@ def main():
         """
 
     # Plotting of history
-    """
+    
     import matplotlib.pyplot as plt
     
     
@@ -233,13 +254,13 @@ def main():
     plt.title("KaleGraph Training")
     plt.xlabel("Epoch")
     plt.ylabel("Loss")
-    plt.plot(np.linspace(1, args.epochs, args.epochs), output['train_loss'], label='Training', color='blue')
-    plt.plot(np.linspace(1, args.epochs, args.epochs), output['test_loss'], label='Test', color='orange')
-    plt.plot(np.linspace(1, args.epochs, args.epochs), output['val_loss'], label='Validation', color='red')
+    plt.plot(np.linspace(1, len(output['train_loss']), len(output['train_loss'])), output['train_loss'], label='Training', color='blue')
+    plt.plot(np.linspace(1, len(output['test_loss']), len(output['test_loss'])), output['test_loss'], label='Test', color='orange')
+    plt.plot(np.linspace(1, len(output['val_loss']), len(output['val_loss'])), output['val_loss'], label='Validation', color='red')
 
     plt.legend()
     plt.show()
-    """
+    
 
 if __name__ == '__main__':
     torch.set_num_threads(1)
