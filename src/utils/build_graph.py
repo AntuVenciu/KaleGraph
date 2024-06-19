@@ -94,7 +94,6 @@ def min_dist(hits, i, j):
     y_ij = y_i - y_j
     z_ij = z_i - z_j
 
-    print(f'Hits phi = {hits["phi"]}')
     # if the hits are on the same U or V type of layer
     if (hits['layer'][i] % 2 ) == (hits['layer'][j] % 2):
         return np.sqrt(x_ij * x_ij + y_ij * y_ij + z_ij * z_ij)
@@ -164,7 +163,7 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
         e_features.append(adj_matrix[int(hits['wireID'][hit_id_i])][int(hits['wireID'][hit_id_j])])#e_features.append(adj_matrix[i][j])
         
         edges_features.append(e_features)
-        print(f"Edge features = {e_features}")
+        #print(f"Edge features = {e_features}")
     
     return np.array(edges_features)
 
