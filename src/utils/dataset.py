@@ -24,7 +24,7 @@ class GraphDataset(Dataset):
     def __init__(self,
                  datafile,
                  adj_matrix,
-                 maxsize=-1,
+                 max_size=-1,
                  transform=None,
                  pre_transform=None):
 
@@ -32,7 +32,7 @@ class GraphDataset(Dataset):
         self.file = datafile
         self.adj_matrix = adj_matrix
         #t0 = time()
-        self.hits_dataset = bg.load_data(self.file)[:maxsize]
+        self.hits_dataset = bg.load_data(self.file)[:max_size]
         #t1 = time()
         #print(f"{t1 - t0:.3f} s to load dataset")
         
