@@ -65,10 +65,10 @@ def validate(model, device, val_loader):
             class_weight = torch.Tensor([ len(y.numpy()) / y.numpy().sum()])
             loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight).item()
             losses.append(loss)
-            TP = torch.sum((y==1) & (output>thld)).item()
-            TN = torch.sum((y==0) & (output<thld)).item()
-            FP = torch.sum((y==0) & (output>thld)).item()
-            FN = torch.sum((y==1) & (output<thld)).item()
+            TP = torch.sum((y==1) & (output>0.5)).item()
+            TN = torch.sum((y==0) & (output<0.5)).item()
+            FP = torch.sum((y==0) & (output>0.5)).item()
+            FN = torch.sum((y==1) & (output<0.5)).item()
             acc = (TP+TN)/(TP+TN+FP+FN)
             if TP + FN == 0:
                 TPR = 0
@@ -191,12 +191,12 @@ def main():
 
     params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 0}
     
-    train_set = GraphDataset(partition['train'], adj_matrix, max_size=10000)
+    train_set = GraphDataset(partition['train'], adj_matrix, max_size=100000)
     #train_set.plot(0)
     train_loader = DataLoader(train_set, **params)
-    test_set = GraphDataset(partition['test'], adj_matrix, maxsize=1000)
+    test_set = GraphDataset(partition['test'], adj_matrix, max_size=1000)
     test_loader = DataLoader(test_set, **params)
-    val_set = GraphDataset(partition['val'], adj_matrix, maxsize=1000)
+    val_set = GraphDataset(partition['val'], adj_matrix, max_size=1000)
     val_loader = DataLoader(val_set, **params)
     
     print(f"Number of train data samples : {train_set.len()}")
@@ -204,8 +204,8 @@ def main():
     print(f"Number of valid data samples : {val_set.len()}")
 
     # Set to the correct number of features in utils/dataset.py
-    NUM_NODE_FEATURES = 12
-    NUM_EDGE_FEATURES = 7
+    NUM_NODE_FEATURES = 3
+    NUM_EDGE_FEATURES = 3
 
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=2).to(device)
     model = torch.compile(model)
@@ -223,7 +223,7 @@ def main():
         train_loss = train(args, model, device, train_loader, optimizer, epoch)
         val_loss, val_acc, val_tpr, val_tnr = validate(model, device, val_loader)
         #print('...optimal threshold', thld)
-        test_loss, test_acc = test(model, device, test_loader, thld=thld)
+        test_loss, test_acc = test(model, device, test_loader, thld=0.5)
         scheduler.step()
         """
         if args.save_model:

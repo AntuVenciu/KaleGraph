@@ -48,7 +48,7 @@ def load_data(filename):
               for i in range(0, len(events_separators) - 1)]
 #    for wire, phi, theta in zip(events[0]['wireID'], events[0]['phi'], events[0]['theta']):
 #        print(f"Wire = {wire} phi = {phi} theta = {theta}")
-    return events[:min(len(events_separators) - 1, 10000)]
+    return events
 
 
 def filter_hits(hits, ampl_cut=0.01, charge_cut=5e-10):
@@ -155,12 +155,12 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
         e_features.append(hits['t'][hit_id_i] - hits['t'][hit_id_j])
         # Calculate minimum distance
         e_features.append(min_dist(hits, hit_id_i, hit_id_j)) # Min dist
-        e_features.append(hits['z'][hit_id_i] - hits['z'][hit_id_j]) # Delta z
+        #e_features.append(hits['z'][hit_id_i] - hits['z'][hit_id_j]) # Delta z
         e_features.append(np.arctan2(hits['y0'][hit_id_i], hits['x0'][hit_id_i]) - np.arctan2(hits['y0'][hit_id_j], hits['x0'][hit_id_j])) # Delta Phi
-        e_features.append(hits['ampl0'][hit_id_i] + hits['ampl1'][hit_id_i] + hits['ampl0'][hit_id_j] + hits['ampl1'][hit_id_j]) # Amplitude
-        e_features.append(hits['charge0'][hit_id_i] + hits['charge1'][hit_id_i] + hits['charge0'][hit_id_j] + hits['charge1'][hit_id_j]) # charge
+        #e_features.append(hits['ampl0'][hit_id_i] + hits['ampl1'][hit_id_i] + hits['ampl0'][hit_id_j] + hits['ampl1'][hit_id_j]) # Amplitude
+        #e_features.append(hits['charge0'][hit_id_i] + hits['charge1'][hit_id_i] + hits['charge0'][hit_id_j] + hits['charge1'][hit_id_j]) # charge
         # Get data driven weight (probability) of each connection from the adjacency matrix
-        e_features.append(adj_matrix[int(hits['wireID'][hit_id_i])][int(hits['wireID'][hit_id_j])])#e_features.append(adj_matrix[i][j])
+        #e_features.append(adj_matrix[int(hits['wireID'][hit_id_i])][int(hits['wireID'][hit_id_j])])#e_features.append(adj_matrix[i][j])
         
         edges_features.append(e_features)
         #print(f"Edge features = {e_features}")
@@ -313,17 +313,17 @@ def build_graph(hits, adj_matrix):
     
     # X is simple
     X = np.array([hits['t'],
-                  hits['charge0'],
-                  hits['charge1'],
-                  hits['ampl0'],
-                  hits['ampl1'],
+                  #hits['charge0'],
+                  #hits['charge1'],
+                  #hits['ampl0'],
+                  #hits['ampl1'],
                   hits['x0'],
-                  hits['y0'],
-                  hits['z0'],
-                  hits['z'],
-                  hits['sigmaz'],
-                  hits['phi'],
-                  hits['theta']])
+                  hits['y0']])
+                  #hits['z0'],
+                  #hits['z'],
+                  #hits['sigmaz'],
+                  #hits['phi'],
+                  #hits['theta']])
     # Build the adjacency matrix
     hits_id = hits['wireID'].astype('int') # Param 0 of hits is the hit ID
     #print("Hits ID = ", hits_id)
@@ -331,10 +331,14 @@ def build_graph(hits, adj_matrix):
     #print(edge_matrix)
     # Build the edge_feature vector
     R = calculate_edge_features(hits, edge_matrix, adj_matrix)
+
+    # Normalize inputs X and R
+    X_norm = np.array([v / np.linalg.norm(v) for v in X])
+    R_norm = np.array([v / np.linalg.norm(v) for v in R])
     
     # Return the graph
     #print(f"X shape = {(X.T).shape}\nedge_index shape = {edge_matrix.T.shape}\nedge_attr shape = {R.shape}", )
-    return {'x' : X.T, 'edge_index' : edge_matrix.T, 'edge_attr' : R}
+    return {'x' : X_norm.T, 'edge_index' : edge_matrix.T, 'edge_attr' : R_norm}
 
 
 if __name__ == "__main__" :
