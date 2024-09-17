@@ -20,11 +20,11 @@ def load_data(filename):
     and transform them into a pandas dataframe.
     Separate events looking at hit ID
     """
-    hitID, wireID, time, layer, ch0, ch1, ampl0, ampl1, x, y, z, truth, nextHit, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
+    hitID, wireID, time, layer, ch0, ch1, ampl0, ampl1, x0, y0, z0, z, sigmaz, phi, theta, truth, nextHit, trackID, mom, trackPhi, trackTheta = np.loadtxt(filename, unpack=True)
     events_separators = [i for i, k in enumerate(hitID) if k==0]
     #print(f"Events starting indexes = {events_separators}")
     #print(f"Number of events = {len(events_separators)}")
-    feature_names = ['wireID', 't', 'layer', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x', 'y', 'z', 'truth', 'nextHit', 'trackID', 'mom', 'trackPhi', 'trackTheta']
+    feature_names = ['wireID', 't', 'layer', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x0', 'y0', 'z0', 'z', 'sigmaz',  'truth', 'nextHit', 'trackID', 'mom', 'trackPhi', 'trackTheta']
     events = [{'wireID' : wireID[events_separators[i] : events_separators[i + 1]],
                't' : time[events_separators[i] : events_separators[i + 1]] * 1e9,
                'layer' : layer[events_separators[i] : events_separators[i + 1]],
@@ -32,9 +32,13 @@ def load_data(filename):
                'charge1' : ch1[events_separators[i] : events_separators[i + 1]] * 1e9,
                'ampl0' : ampl0[events_separators[i] : events_separators[i + 1]],
                'ampl1' : ampl1[events_separators[i] : events_separators[i + 1]],
-               'x' : x[events_separators[i] : events_separators[i + 1]],
-               'y' : y[events_separators[i] : events_separators[i + 1]],
+               'x0' : x0[events_separators[i] : events_separators[i + 1]],
+               'y0' : y0[events_separators[i] : events_separators[i + 1]],
+               'z0' : z0[events_separators[i] : events_separators[i + 1]],
                'z' : z[events_separators[i] : events_separators[i + 1]],
+               'sigmaz' : sigmaz[events_separators[i] : events_separators[i + 1]],
+               'phi' : phi[events_separators[i] : events_separators[i + 1]],
+               'theta' : theta[events_separators[i] : events_separators[i + 1]],
                'truth' : truth[events_separators[i] : events_separators[i + 1]],
                'nextHit' : nextHit[events_separators[i] : events_separators[i + 1]],
                'trackID' : trackID[events_separators[i] : events_separators[i + 1]],
@@ -42,7 +46,8 @@ def load_data(filename):
                'trackPhi' : trackPhi[events_separators[i] : events_separators[i + 1]],
                'trackTheta' : trackTheta[events_separators[i] : events_separators[i + 1]]}
               for i in range(0, len(events_separators) - 1)]
-
+#    for wire, phi, theta in zip(events[0]['wireID'], events[0]['phi'], events[0]['theta']):
+#        print(f"Wire = {wire} phi = {phi} theta = {theta}")
     return events[:min(len(events_separators) - 1, 10000)]
 
 
@@ -83,18 +88,36 @@ def min_dist(hits, i, j):
     """
     Return minimum distance between hits i and j
     """
-    # Properties of the hits
-    #layer_i = hits[i][2]
-    #layer_j = hits[j][2]
-    x_ij = hits['x'][i] - hits['x'][j]
-    y_ij = hits['y'][i] - hits['y'][j]
-    z_ij = hits['z'][i] - hits['z'][j]
-    #phi_i = hits[i][6]
-    #phi_j = hits[j][6]
-    #theta_i = hits[i][7]
-    #theta_j = hits[j][7]
-    
-    return np.sqrt(x_ij * x_ij + y_ij * y_ij + z_ij * z_ij)
+    x_i, y_i, z_i = hits['x0'][i], hits['y0'][i], hits['z0'][i]
+    x_j, y_j, z_j = hits['x0'][j], hits['y0'][j], hits['z0'][j]
+    x_ij = x_i - x_j
+    y_ij = y_i - y_j
+    z_ij = z_i - z_j
+
+    # if the hits are on the same U or V type of layer
+    if (hits['layer'][i] % 2 ) == (hits['layer'][j] % 2):
+        return np.sqrt(x_ij * x_ij + y_ij * y_ij + z_ij * z_ij)
+
+    else: # else calculate distance of closest approach between two intersecting wires
+        sinphi_i, cosphi_i = np.sin(hits['phi'][i]), np.cos(hits['phi'][i])
+        #print(f"sinphi_i = {sinphi_i}, phi_i = {hits['phi'][i]}")
+        sinth_i, costh_i = np.sin(hits['theta'][i]), np.cos(hits['theta'][i])
+        sinphi_j, cosphi_j = np.sin(hits['phi'][j]), np.cos(hits['phi'][j])
+        #print(f"sinphi_j = {sinphi_j}, phi_j = {hits['phi'][j]}")
+        sinth_j, costh_j = np.sin(hits['theta'][j]), np.cos(hits['theta'][j])
+        direction_i = np.array([cosphi_i * sinth_i, sinphi_i * sinth_i, costh_i])
+        direction_j = np.array([cosphi_j * sinth_j, sinphi_j * sinth_j, costh_j])
+        origin_i = np.array([x_i, y_i, z_i])
+        origin_j = np.array([x_j, y_j, z_j])
+        #print(f"direction i = {direction_i}\ndirection j = {direction_j}")
+        #print(f"origin i = {origin_i}\norigin j = {origin_j}")
+        n = np.cross(direction_i, direction_j)
+        if (np.linalg.norm(n) < 1e-14):
+            #print(f"Problem in calculating ||n||. n = {n}")
+            return np.sqrt(x_ij * x_ij + y_ij * y_ij + z_ij * z_ij)
+                
+        # doca = |n . (origin_i - origin_j)| / || n ||
+        return np.abs(np.dot(n, (origin_i - origin_j))) / np.linalg.norm(n)
 
 def calculate_edge_features(hits, edge_matrix, adj_matrix):
     """
@@ -133,13 +156,14 @@ def calculate_edge_features(hits, edge_matrix, adj_matrix):
         # Calculate minimum distance
         e_features.append(min_dist(hits, hit_id_i, hit_id_j)) # Min dist
         e_features.append(hits['z'][hit_id_i] - hits['z'][hit_id_j]) # Delta z
-        e_features.append(np.arctan2(hits['y'][hit_id_i], hits['x'][hit_id_i]) - np.arctan2(hits['y'][hit_id_j], hits['x'][hit_id_j])) # Delta Phi
+        e_features.append(np.arctan2(hits['y0'][hit_id_i], hits['x0'][hit_id_i]) - np.arctan2(hits['y0'][hit_id_j], hits['x0'][hit_id_j])) # Delta Phi
         e_features.append(hits['ampl0'][hit_id_i] + hits['ampl1'][hit_id_i] + hits['ampl0'][hit_id_j] + hits['ampl1'][hit_id_j]) # Amplitude
         e_features.append(hits['charge0'][hit_id_i] + hits['charge1'][hit_id_i] + hits['charge0'][hit_id_j] + hits['charge1'][hit_id_j]) # charge
         # Get data driven weight (probability) of each connection from the adjacency matrix
         e_features.append(adj_matrix[int(hits['wireID'][hit_id_i])][int(hits['wireID'][hit_id_j])])#e_features.append(adj_matrix[i][j])
         
         edges_features.append(e_features)
+        #print(f"Edge features = {e_features}")
     
     return np.array(edges_features)
 
@@ -293,9 +317,13 @@ def build_graph(hits, adj_matrix):
                   hits['charge1'],
                   hits['ampl0'],
                   hits['ampl1'],
-                  hits['x'],
-                  hits['y'],
-                  hits['z']])
+                  hits['x0'],
+                  hits['y0'],
+                  hits['z0'],
+                  hits['z'],
+                  hits['sigmaz'],
+                  hits['phi'],
+                  hits['theta']])
     # Build the adjacency matrix
     hits_id = hits['wireID'].astype('int') # Param 0 of hits is the hit ID
     #print("Hits ID = ", hits_id)
