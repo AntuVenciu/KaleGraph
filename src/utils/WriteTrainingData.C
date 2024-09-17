@@ -138,13 +138,13 @@ void WriteTrainingData()
   
   // Train, Test and Val output files
   TString outputrecdir = "./"; //"/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/";
-  TString outputfilename_train = outputrecdir + "1e6TrainSet_CDCH_SPX_noSelectedPositron.txt";
+  TString outputfilename_train = outputrecdir + "1e6TrainSet_CDCH.txt";
   ofstream outputfile_train;
   outputfile_train.open(outputfilename_train.Data());
-  TString outputfilename_test = outputrecdir + "1e6TestSet_CDCH_SPX_noSelectedPositron.txt";
+  TString outputfilename_test = outputrecdir + "1e6TestSet_CDCH.txt";
   ofstream outputfile_test;
   outputfile_test.open(outputfilename_test.Data());
-  TString outputfilename_val = outputrecdir + "1e6ValSet_CDCH_SPX_noSelectedPositron.txt";
+  TString outputfilename_val = outputrecdir + "1e6ValSet_CDCH.txt";
   ofstream outputfile_val;
   outputfile_val.open(outputfilename_val.Data());
 
@@ -284,7 +284,7 @@ void WriteTrainingData()
   selector.fTargetZ = targetSemiAxis[0];
   selector.fTargetY = targetSemiAxis[1];
   
-  for (Int_t iEvent = 0; iEvent < min(nMaxEvents, nEvent); iEvent++) {
+  for (Int_t iEvent = 0; iEvent < max(nMaxEvents, nEvent); iEvent++) {
     
     if (iEvent % 5000 == 1) {
       cout<<iEvent<<" events finished..."<<endl;
@@ -354,7 +354,7 @@ void WriteTrainingData()
 	if (!aHit->Getgood()) {
 	  continue;
 	}
-	MEGStateVector* state = (MEGStateVector*)pDCHTrack->GetStateVectorAt(ihit);
+	MEGStateVector* state = (MEGStateVector*)pDCHTrack->GetPredictedStateVectorAt(ihit);
 	hit_idx.push_back(pDCHTrack->GethitindexAt(ihit));
 	z_vec.push_back(state->GetZ());
       }
@@ -394,25 +394,31 @@ void WriteTrainingData()
 
       // Get all info of the hit
       // Signal informations
-      MEGCYLDCHHitRecResult* aHitRes0 = (MEGCYLDCHHitRecResult*)pDCHHitRecResultArray->At(aHit->GetHitRecResultIndexAt(0));
-      MEGCYLDCHHitRecResult* aHitRes1 = (MEGCYLDCHHitRecResult*)pDCHHitRecResultArray->At(aHit->GetHitRecResultIndexAt(1));
       double charge0 = -1;
       double ampl0 = -1;
       double charge1 = -1;
       double ampl1 = -1;
-      if (aHitRes0) {
-	charge0 = aHitRes0->Getcharge();
-	ampl0 = aHitRes0->GetamplsignFullRange();
+      
+      if (aHit->GetHitRecResultIndexAt(0) >= 0) {
+	MEGCYLDCHHitRecResult* aHitRes0 = (MEGCYLDCHHitRecResult*)pDCHHitRecResultArray->At(aHit->GetHitRecResultIndex()[0]);
+	if (aHitRes0) {
+	  charge0 = aHitRes0->Getcharge();
+	  ampl0 = aHitRes0->GetamplsignFullRange();
+	}
       }
-      if (aHitRes1) {
-	charge1 = aHitRes1->Getcharge();
-	ampl1 = aHitRes1->GetamplsignFullRange();
+      if (aHit->GetHitRecResultIndexAt(1) >= 0) {
+	MEGCYLDCHHitRecResult* aHitRes1 = (MEGCYLDCHHitRecResult*)pDCHHitRecResultArray->At(aHit->GetHitRecResultIndex()[1]);
+	if (aHitRes1) {
+	  charge1 = aHitRes1->Getcharge();
+	  ampl1 = aHitRes1->GetamplsignFullRange();
+	}
       }
+      
       // Geometry
       int wire = aHit->Getwire();
       double time = aHit->Gettime();
       int layer = aHit->Getplane();
-      TVector3 wireVec = {0., 0., 0.)};
+      TVector3 wireVec = {0., 0., 0.};
       wireVec = fCYLDCHGeometry->LocalToGlobal(wire, wireVec);
       double x0 = wireVec.X();
       double y0 = wireVec.Y();
@@ -429,22 +435,22 @@ void WriteTrainingData()
       int is_good = 0; // not good
       int track_id = -1; // not good
       double mom = 1e30; // not good
-      double phi = 1e30; // not good
-      double theta = 1e30; // not good
+      double phitrk = 1e30; // not good
+      double thetatrk = 1e30; // not good
       int next_hit_idx = -1; // not good
       // Check if it is a good hit
       int track_idx = 0;
       for (auto ids : hits_id) {
-	int* found_idx = find(ids.begin(), ids.end(), i); 
+	auto found_idx = find(ids.begin(), ids.end(), i); 
 	if (found_idx != ids.end()) {
 	  // Get next hit
 	  int found_hit_idx = found_idx - ids.begin();
-	  next_hit_idx = (found_hit_idx == ids.size() - 1) ? -1 : found_hit_idx + 1;
+	  next_hit_idx = (found_hit_idx == (int)(ids.size() - 1)) ? -1 : ids.at(found_hit_idx + 1);
 	  is_good = 1;
 	  track_id = track_idx;
 	  mom = mom_target.at(track_idx);
-	  phi = phi_target.at(track_idx);
-	  theta = theta_target.at(track_idx);
+	  phitrk = phi_target.at(track_idx);
+	  thetatrk = theta_target.at(track_idx);
 	  break;
 	}
 	track_idx++;
@@ -452,13 +458,13 @@ void WriteTrainingData()
 
       // write
       if (iEvent < f_train * max(nMaxEvents, nEvent)) {
-	
+	outputfile_train << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phitrk << " " << thetatrk << endl;
       }
       else if (iEvent < (f_train + f_test) * max(nMaxEvents, nEvent)) {
-	outputfile_test << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phi << " " << theta << endl;
+	outputfile_test << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phitrk << " " << thetatrk << endl;
       }
       else {
-	outputfile_val << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phi << " " << theta << endl;
+	outputfile_val << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phitrk << " " << thetatrk << endl;
       }
 
     }
