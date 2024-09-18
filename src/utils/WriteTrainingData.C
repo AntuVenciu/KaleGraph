@@ -10,6 +10,8 @@ Layer is 10.
 x, y, z from pixelID position.
 phi and theta wire can not be provided->Let's start not using this information
 at the beginning.
+
+We also evaluate the performances of the standard GENFIT track finder
 */
 
 #include <TROOT.h>
@@ -47,7 +49,7 @@ using namespace MEG;
 using namespace std;
 
 vector<int> wireIDSorting(vector<double> values, vector<int> ids) {
-
+  //cout << "ID sorting" << endl;
   // initialize original index locations
   vector<size_t> idx(values.size());
   iota(idx.begin(), idx.end(), 0);
@@ -63,6 +65,7 @@ vector<int> wireIDSorting(vector<double> values, vector<int> ids) {
   for (auto i : idx) {
     copy_vector.push_back(ids.at(i));
   }
+  //cout << "ID sorted" << endl;
   return copy_vector;
 
 }
@@ -137,6 +140,7 @@ void WriteTrainingData()
 {
   
   // Train, Test and Val output files
+  /*
   TString outputrecdir = "./"; //"/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/";
   TString outputfilename_train = outputrecdir + "1e6TrainSet_CDCH.txt";
   ofstream outputfile_train;
@@ -147,16 +151,17 @@ void WriteTrainingData()
   TString outputfilename_val = outputrecdir + "1e6ValSet_CDCH.txt";
   ofstream outputfile_val;
   outputfile_val.open(outputfilename_val.Data());
+  */
 
-  int nMaxEvents = 100000;
+  int nMaxEvents = 20000;
   double f_train = 0.7;
   double f_test = 0.15;
 
-  TString inputrecdir = "/meg/data1/offline/processes/20240209/425xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
+  TString inputrecdir = "/meg/data1/offline/processes/20240813/464xxx/"; // "/meg/data1/shared/subprojects/cdch/ext-venturini_a/2021_3e7/";
   TString runList = "";
   Int_t sRun = 0;
   Int_t nfile = 999;
-  set<Int_t> triggerMask {20};
+  set<Int_t> triggerMask {0};
 
   // Apply selection to denominator of the efficiency evaluation
   // TC clusters that passes all the time, z and phi selection are accounted for the efficiency evaluation
@@ -210,6 +215,9 @@ void WriteTrainingData()
   TClonesArray *pSPXTrackArray = new TClonesArray("MEGSPXTrack");
   TBranch *bDCHSPXMatchedTrack;
   TClonesArray *pDCHSPXMatchedTrackArray = new TClonesArray("MEGDCHSPXMatchedTrack");
+  TBranch *bDCHTrackCandidate;
+  TClonesArray *pDCHTrackCandidateArray = new TClonesArray("MEGDCHTrackCandidate");
+
   
   TBranch *bInfoS;
   ROMETreeInfo *pInfoS;
@@ -242,7 +250,9 @@ void WriteTrainingData()
   rec->SetBranchStatus("dchspxmatchedtrack.*", 1); 
   rec->SetBranchStatus("spxtracks", 1); 
   rec->SetBranchStatus("spxtracks.*", 1); 
-   
+  rec->SetBranchStatus("dchtrackcandidates", 1);
+  rec->SetBranchStatus("dchtrackcandidates.*", 1);
+
   rec->SetBranchAddress("Info.", &pInfoS, &bInfoS);
   rec->SetBranchAddress("eventheader.", &pEventHeader, &bEventHeader);
   rec->SetBranchAddress("positron", &pPositronArray, &bPositron);
@@ -253,7 +263,7 @@ void WriteTrainingData()
   rec->SetBranchAddress("dchhits", &pDCHHitArray, &bDCHHit);
   rec->SetBranchAddress("dchhitrecresults", &pDCHHitRecResultArray, &bDCHHitRecResult);
   rec->SetBranchAddress("spxtracks", &pSPXTrackArray, &bSPXTrack);
-
+  rec->SetBranchAddress("dchtrackcandidates", &pDCHTrackCandidateArray, &bDCHTrackCandidate);
 
   Double_t targetSlantAngle = pTargetRunHeader->GetEulerAnglesAt(1);
   TVector3 targetOffset(pTargetRunHeader->GetTargetPosition());
@@ -264,7 +274,7 @@ void WriteTrainingData()
    
   Int_t nEvent = rec->GetEntries(); 
   cout<<"Number of Event "<<nEvent<<endl;
-
+  
   Double_t refTime = (denominatorCutTC.timeWindow[0] + denominatorCutTC.timeWindow[1]) / 2;
   // Setup MEGPhysicsSelection
   MEGPhysicsSelection selector(kFALSE, 0, kTRUE);
@@ -284,7 +294,13 @@ void WriteTrainingData()
   selector.fTargetZ = targetSemiAxis[0];
   selector.fTargetY = targetSemiAxis[1];
   
-  for (Int_t iEvent = 0; iEvent < max(nMaxEvents, nEvent); iEvent++) {
+  // Variables to store performances of GENFIT PR on this dataset:
+  // tpr = good_hits_found / hits_final_fit
+  // fp = hits_found / good_hits - 1
+  vector<double> tpr_vec;
+  vector<double> fp_vec;
+
+  for (Int_t iEvent = 0; iEvent < min(nMaxEvents, nEvent); iEvent++) {
     
     if (iEvent % 5000 == 1) {
       cout<<iEvent<<" events finished..."<<endl;
@@ -295,14 +311,16 @@ void WriteTrainingData()
     auto mask = pEventHeader->Getmask();
     if (triggerMask.find(mask) == triggerMask.end()) continue;
     
-    if (!pPositronArray || !pSPXTrackArray || !pDCHTrackArray || !pDCHHitArray) continue;
+    if (!pPositronArray || !pSPXTrackArray || !pDCHTrackArray || !pDCHHitArray || !pDCHTrackCandidateArray) continue;
     
     // Select positrons
+    
     vector<Bool_t> selected;
     Bool_t oriSelectAPositron = selector.fSelectAPositron;
     selector.fSelectAPositron = kFALSE;
     selector.PositronSelection(selected, pPositronArray, false); 
     
+    vector<vector<int>> candidatehits_id;
     vector<vector<int>> hits_id;
     vector<int> idx_positron;
     vector<double> mom_target;
@@ -311,53 +329,84 @@ void WriteTrainingData()
 
     // Loop over selected positrons
     int npos = 0;
+    //cout << "Entering positron loop" << endl;
     for (Int_t ipos=0; ipos < pPositronArray->GetEntriesFast(); ipos++) {
+      //cout << "ipos = " << ipos << endl;
       
-      /*
       if (!selected[ipos]) {
 	continue;
       }
-      */
+      
       
       MEGGLBPositron* pPositron = (MEGGLBPositron*)pPositronArray->At(ipos);
+      if (!pPositron) continue;
+      //cout << "pPositron initialized" << endl;
       MEGDCHTrack* pDCHTrack = (MEGDCHTrack*)pDCHTrackArray->At(pPositron->GetDCHTrackIndex());
+      if (!pDCHTrack) continue;
+      //cout << "DCHTrack initialized" << endl;
       MEGSPXTrack* pSPXTrack = (MEGSPXTrack*)pSPXTrackArray->At(pPositron->GetSPXTrackIndex());
-      MEGDCHSPXMatchedTrack* pDCHSPXMatchedTrack = (MEGDCHSPXMatchedTrack*)pDCHSPXMatchedTrackArray->At(pPositron->GetDCHTrackIndex());
-      
+      if (!pSPXTrack) continue;
+      //cout << "SPXTrack initialized" << endl;
+      //MEGDCHSPXMatchedTrack* pDCHSPXMatchedTrack = (MEGDCHSPXMatchedTrack*)pDCHSPXMatchedTrackArray->At(pPositron->GetDCHTrackIndex());
+      /*
       if (pPositron->GetDCHTrackIndex() != pDCHSPXMatchedTrack->GetMatchedTrackIdAt(0)) {
 	cout << "Not matching tracks" << endl;
 	continue;
       }
-      
+      */
       npos++;
 
+      // get found idx of hits
+      vector<int> candidateHitsIdx;
+      
+      MEGDCHTrackCandidate *aCand = (MEGDCHTrackCandidate*)pDCHTrackCandidateArray->At(pDCHTrack->Getcandidateindex());
+      if (!aCand) continue;
+      else {
+	for (auto idx : aCand->Gethitindex()) {
+	  // Avoid double counting
+	  if (find(candidateHitsIdx.begin(), candidateHitsIdx.end(), idx) == candidateHitsIdx.end()) {
+	    candidateHitsIdx.push_back(idx);
+	    //cout << idx << endl;
+	  }
+	}
+      }
+      candidatehits_id.push_back(candidateHitsIdx);
+      
       // Fill track info
       idx_positron.push_back(ipos);
       MEGStateVector* stateTarget = (MEGStateVector*)pDCHTrack->GetStateVectorTarget();
+      if (!stateTarget) continue;
       mom_target.push_back(stateTarget->GetP());
       phi_target.push_back(stateTarget->GetPhi());
       theta_target.push_back(stateTarget->GetTheta());
+      //cout << "stateTarget initialized" << endl;
 
       // Loop over hits in the DCH Track to have good hit index
       Int_t nhits = pDCHTrack->Getnhits();
       vector<int> hit_idx;
       vector<double> z_vec;
-
+      //cout << "Entering hits loop with " << nhits << " hits" << endl;
       for (Int_t ihit=0; ihit < nhits; ihit++) {
-	
+	//cout << "ihit = " << ihit << endl;
 	// Skip hits not used in the fit
+	if (ihit >= pDCHTrack->GetHasPredictionSize()) continue;
 	if (!pDCHTrack->GetHasPredictionAt(ihit)) {
 	  continue;
 	}
-	
+	//cout << pDCHTrack->GethitindexAt(ihit) << endl;
+	if (ihit >= pDCHTrack->GethitindexSize()) continue;
 	MEGDCHHit* aHit = (MEGDCHHit*)pDCHHitArray->At(pDCHTrack->GethitindexAt(ihit));
+	if (!aHit) continue;
 	if (!aHit->Getgood()) {
 	  continue;
 	}
+	if (ihit >= pDCHTrack->GetPredictedStateVectorSize()) continue;
 	MEGStateVector* state = (MEGStateVector*)pDCHTrack->GetPredictedStateVectorAt(ihit);
+	if (!state) continue;
 	hit_idx.push_back(pDCHTrack->GethitindexAt(ihit));
 	z_vec.push_back(state->GetZ());
       }
+      //cout << "Out of the hit loop" << endl;
       /*
       // Do the same on spx hits
       Int_t nhits_spx = pSPXTrack->Getnhits();
@@ -376,10 +425,12 @@ void WriteTrainingData()
       // Fill vector with index from this track after sorting
       vector<int> sorted_idx = wireIDSorting(z_vec, hit_idx);
       hits_id.push_back(sorted_idx);
-      
     } // Positron Loop
-   
+    //cout << "Out of the positron loop" << endl;
+    //cout << "npos = " << npos << endl;
     if (npos == 0) continue;
+
+    int good_hits = 0;
 
     // Loop over all DCH Hits and then over all SPX Hits to write the training file
     for (int i=0; i<pDCHHitArray->GetEntriesFast(); i++) {
@@ -451,12 +502,14 @@ void WriteTrainingData()
 	  mom = mom_target.at(track_idx);
 	  phitrk = phi_target.at(track_idx);
 	  thetatrk = theta_target.at(track_idx);
+	  good_hits++;
 	  break;
 	}
 	track_idx++;
       }
 
       // write
+      /*
       if (iEvent < f_train * max(nMaxEvents, nEvent)) {
 	outputfile_train << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phitrk << " " << thetatrk << endl;
       }
@@ -466,8 +519,29 @@ void WriteTrainingData()
       else {
 	outputfile_val << i << " " << wire << " " << time << " " << layer << " " << charge0 << " " << charge1 << " " << ampl0 << " " << ampl1 << " " << x0 << " " << y0 << " " << z0 << " " << z << " " << sigmaz << " " << phi << " " << theta << " " << is_good << " " << next_hit_idx << " "  << track_id << " " << mom << " " << phitrk << " " << thetatrk << endl;
       }
+      */
 
+    } // end hit loop
+
+    // EValuate tpr and fn
+    for (int i=0; i<hits_id.size(); i++) {
+      int tpr = 0;
+      int fn = 0;
+      for (auto id : hits_id.at(i)) {
+	if (find(candidatehits_id.at(i).begin(), candidatehits_id.at(i).end(), id) != candidatehits_id.at(i).end()) {
+	  tpr++;
+	}
+	else {
+	  fn++;
+	}
+      }
+      if (tpr + fn > 0) {
+	tpr_vec.push_back((double)tpr / (double)(tpr + fn));
+	fp_vec.push_back(1 - (double)tpr/(double)candidatehits_id.at(i).size());
+      }
     }
+
+
   /*
     for (int i=0; i<pSPXHitArray->GetEntriesFast(); i++) {
       MEGSPXHit* aHit = (MEGSPXHit*)pSPXHitArray->At(i);
@@ -518,6 +592,19 @@ void WriteTrainingData()
 
   } // Event Loop
   
+  // Output performances of PR
+  double final_tpr = 0.;
+  double final_fp = 0.;
+  for (auto tpr : tpr_vec) {
+    final_tpr = final_tpr + tpr;
+  }
+  for (auto fp : fp_vec) {
+    final_fp = final_fp + fp;
+  }
+  cout << "TPR : " << (final_tpr / (double) tpr_vec.size()) * 100 << " % " << endl;
+  cout << "FNR : " << (final_fp / (double) fp_vec.size()) * 100 << " % " << endl;
+
+  /*
   // Close files
   cout << outputfilename_train << " written!" << endl;
   outputfile_train.close();
@@ -525,7 +612,7 @@ void WriteTrainingData()
   outputfile_test.close();
   cout << outputfilename_val << " written!" << endl;
   outputfile_val.close();
-
+  */
 }
 
 //______________________________________________________________________________
@@ -552,7 +639,7 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
          if (file.find("rec") != string::npos
              && file.find(".root") != string::npos) {
             smatch results;
-            if (regex_match(file, results, regex("rec(\\d+).root"))) {
+            if (regex_match(file, results, regex("rec(\\d+)_open.root"))) {
                files[atoi(results[1].str().data())] = dir + file.c_str();
             }
          }
@@ -589,7 +676,7 @@ map<Int_t, TString> PrepareRunList(TString dir, TString runlist, Int_t startRun,
          TString recfile;
          // check subdir exists
          if (!stat(Form("%s/%03dxxx", dir.Data(), run /1000), &sta)) {
-            recfile = dir + Form("%03dxxx/rec%05d.root", run / 1000, run);
+            recfile = dir + Form("%03dxxx/rec%05d_open.root", run / 1000, run);
          } else {
             recfile = dir + Form("rec%05d.root", run);
          }
