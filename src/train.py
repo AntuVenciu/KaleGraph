@@ -18,6 +18,7 @@ from torch.profiler import profile, record_function, ProfilerActivity
 from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset
 from utils.build_graph import build_adjacency_matrix, load_data
+import utils.plot_graph as pg 
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -47,8 +48,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
             if args.dry_run:
                 break
         losses.append(loss.item())
-    print("...epoch time: {0}s".format(time()-epoch_t0))
-    print("...epoch {}: train loss={}".format(epoch, np.mean(losses)))
+    print(f"... epoch time: {time() - epoch_t0}s")
+    print(f"... epoch {epoch}: train loss={np.mean(losses)}")
     return losses
 
 def validate(model, device, val_loader):
@@ -192,7 +193,6 @@ def main():
     params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 0}
     
     train_set = GraphDataset(partition['train'], adj_matrix, max_size=100000)
-    #train_set.plot(0)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'], adj_matrix, max_size=1000)
     test_loader = DataLoader(test_set, **params)
@@ -225,13 +225,23 @@ def main():
         #print('...optimal threshold', thld)
         test_loss, test_acc = test(model, device, test_loader, thld=0.5)
         scheduler.step()
+
+        """
+        Plot a graph on a single event showing performances
+        """
+        model.eval()
+        data_plot = test_set.get(0)
+        output_plot = model(data_plot.x, data_plot.edge_index, data_plot.edge_attr)
+        output_plot = output_plot.squeeze(1).clone().to(torch.float32)
+        test_set.plot(0, compare_y=output_plot, save_fig=epoch)
+
         """
         if args.save_model:
             torch.save(model.state_dict(),
                        "trained_models/train{}_PyG_{}_epoch{}_{}GeV_redo.pt"
                        .format(args.sample, args.construction, epoch, args.pt))
         """
-
+        
         output['train_loss'] += train_loss
         output['val_loss'] += val_loss
         output['val_tpr'] += val_tpr

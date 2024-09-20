@@ -83,7 +83,7 @@ class GraphDataset(Dataset):
         #print(f"{t1 - t0:.3f} s to prepare a graph = {(t1 - t0) / (t2 - t0) * 100:.2f} %  of time in an event")
         return data
 
-    def plot(self, idx):
+    def plot(self, idx, compare_y=[], save_fig=0):
         """
         Plot a graph
         """
@@ -117,7 +117,7 @@ class GraphDataset(Dataset):
 
         # plot nodes and edges:
         for k, e in enumerate(graph['edge_index'].T):
-            print(f"Edge number {k} = {e}")
+            #print(f"Edge number {k} = {e}")
             # hit IDs and properties
             i = ids[e[0]]
             j = ids[e[1]]
@@ -127,23 +127,47 @@ class GraphDataset(Dataset):
             color_j = colors[int(truth_j)]
             hittype_i, x_i, y_i = plot_graph.calculate_coordinates(int(i), pixel_geo)
             if i not in drawn_hits:
-                plt.errorbar(x_i, y_i, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=color_i)
+                #plt.errorbar(x_i, y_i, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=color_i)
                 drawn_hits.append(i)
             hittype_j, x_j, y_j = plot_graph.calculate_coordinates(int(j), pixel_geo)
             if j not in drawn_hits:
-                plt.errorbar(x_j, y_j, fmt=fmts[hittype_j], alpha=.6, markersize=10, color=color_j)
+                #plt.errorbar(x_j, y_j, fmt=fmts[hittype_j], alpha=.6, markersize=10, color=color_j)
                 drawn_hits.append(j)
+
             # decide color of edge: red if correct not found,  blue if correct found, grey if not correct not found
+            ecolor = None
+            if len(compare_y) == 0:
+                if y[k] == 1:
+                    ecolor = 'blue'
+                #if y[k] == 0 and truth_i + truth_j < 2:
+                #    ecolor = 'yellow'
+                if y[k] == 0:
+                    ecolor = 'red'
+                plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-')
 
-            if y[k] == 1:
-                ecolor = 'blue'
-            #if y[k] == 0 and truth_i + truth_j < 2:
-            #    ecolor = 'yellow'
-            if y[k] == 0:
-                ecolor= 'red'
-            plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-')
-            
-            
-
+            if len(compare_y) > 0 and len(compare_y) == len(y):
+                # compare_y is an array of y output to be compared with the true y
+                # color scale is set according to results y - compare_y
+                # Red: good connection not found (FN)
+                # Green: good connection found (TP)
+                # Blue: bad connection found (FP)
+                # No connection: bad connection not found (TN)
+                if y[k] == 1 and compare_y[k] >= 0.5:
+                    ecolor = 'green'
+                if y[k] == 1 and compare_y[k] < 0.5:
+                    ecolor = 'red'
+                if y[k] == 0 and compare_y[k] >= 0.5:
+                    ecolor = 'blue'
+                #if y[k] == 0 and compare_y[k] < 0.5:
+                #    ecolor = 'white'
+                plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-')
+                
         plt.axis('equal')
-        plt.show()
+        plt.tight_layout()
+        if len(compare_y) > 0:
+            plt.text(0, 0, 'red: FN\ngreen: TP\nblue: FP')
+        # Save the plot or show it
+        if save_fig > 0:
+            plt.savefig(f"plot_graph_training_{save_fig}.pdf")
+        else:
+            plt.show()
