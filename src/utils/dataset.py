@@ -105,13 +105,15 @@ class GraphDataset(Dataset):
         pixel_geo = np.loadtxt("utils/spxGeometry.txt")
 
         # colors
-        colors = ["red", "blue"] # red for bad hits, blue for good hits 
+        colors = ["red", "green"] # red for bad hits, blue for good hits 
         fmts = ["o", "s"] # circle for cdch hits, square for spx hits 
         
         plt.figure(1)
         plt.title("Example Graph in x-y view")
         plt.xlabel("X [cm]")
         plt.ylabel("Y [cm]")
+        plt.xlim(-300, 0)
+        plt.ylim(-300, 0)
         
         drawn_hits = []
 
@@ -155,17 +157,21 @@ class GraphDataset(Dataset):
                 if y[k] == 1 and compare_y[k] >= 0.5:
                     ecolor = 'green'
                 if y[k] == 1 and compare_y[k] < 0.5:
-                    ecolor = 'red'
-                if y[k] == 0 and compare_y[k] >= 0.5:
                     ecolor = 'blue'
-                #if y[k] == 0 and compare_y[k] < 0.5:
-                #    ecolor = 'white'
+                if y[k] == 0 and compare_y[k] >= 0.5:
+                    ecolor = 'red'
+                if y[k] == 0 and compare_y[k] < 0.5:
+                    continue
                 plt.plot([x_i, x_j], [y_i, y_j], ecolor, linewidth=.5, linestyle='-')
+                plt.errorbar([x_i], [y_i], fmt='.', color=color_i)
+                plt.errorbar([x_j], [y_j], fmt='.', color=color_j)
                 
-        plt.axis('equal')
+        #plt.axis('equal')
+        plt.xlim(-300, 0)
+        plt.ylim(-300, 0)
         plt.tight_layout()
-        if len(compare_y) > 0:
-            plt.text(0, 0, 'red: FN\ngreen: TP\nblue: FP')
+        #if len(compare_y) > 0:
+            #plt.text(0, 0, 'red: FP\ngreen: TP\nblue: FN')
         # Save the plot or show it
         if save_fig > 0:
             plt.savefig(f"plot_graph_training_{save_fig}.pdf")
