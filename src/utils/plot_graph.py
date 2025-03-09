@@ -90,11 +90,11 @@ def plot(hits, edge_matrix, y):
 
         # Try to visualize from npz files
         hittype_i = 0
-        xi = hits[i, 5]
-        yi = hits[i, 6]
+        xi = hits[i, 0]
+        yi = hits[i, 1]
         hittype_j = 0
-        xj = hits[j, 5]
-        yj = hits[j, 6]
+        xj = hits[j, 0]
+        yj = hits[j, 1]
 
         x_max = max(x_max, max(xi, xj))
         x_min = min(x_min, min(xi, xj))
@@ -105,7 +105,7 @@ def plot(hits, edge_matrix, y):
         plt.errorbar(xi, yi, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=colors[hittype_i])
         #hittype_j, xj, yj = calculate_coordinates(j, pixel_geo)
         plt.errorbar(xj, yj, fmt=fmts[hittype_j], alpha=.5, markersize=10, color=colors[hittype_j])
-        if y[k] == 1:
+        if y[k] > 0:
             plt.plot([xi, xj], [yi, yj], 'green', linewidth=2, linestyle='-', alpha=1)
         else:
             plt.plot([xi, xj], [yi, yj], 'grey', linewidth=0.5, linestyle='-.', alpha=.25)

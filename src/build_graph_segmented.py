@@ -10,53 +10,88 @@ import pandas as pd
 import torch
 
 
-def load_data(filename):
+import numpy as np
+import pandas as pd
+
+def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"):
     """
-    Load hits data from a file
+    Load data for the events within sim file with id file_id
     and transform them into a pandas dataframe.
-    Separate events looking at hit ID
+    Separate events looking at event id.
     """
-    # Load the file
-    data = np.loadtxt(filename)
-    # Identify the indices where new events start
-    event_starts = np.where(data[:, 0] == 0)[0]
 
-    # Build a list of pd DataFrames
-    feature_names = ['hitID', 'wireID', 't', 'layer', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x0', 'y0', 'z0', 'theta', 'phi', 'z', 'sigmaz',  'truth', 'nextHit', 'trackID', 'mom', 'trackPhi', 'trackTheta']
-    events = [
-        pd.DataFrame(
-            data[event_starts[i] : (event_starts[i + 1] if i + 1 < len(event_starts) else len(data))],
-            columns=feature_names
-        )
-        for i in range(len(event_starts))
-    ]
+    print("Loading data...")
 
-    return events
+    # Load the files
+    data_mc = np.loadtxt(f'{input_dir}/{file_id}_MCTruth.txt')
+    data_cdch = np.loadtxt(f'{input_dir}/{file_id}_CYLDCHHits.txt')
+    data_spx = np.loadtxt(f'{input_dir}/{file_id}_SPXHits.txt')
 
-def filter_hits(hits, ampl_cut=-1, charge_cut=-1):
+    # Define features
+    features_mc = ['event_id', 'xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
+    features_cdch = ['event_id', 'wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
+    features_spx = ['event_id', 'pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
+
+    # Create DataFrames
+    df_mc_full = pd.DataFrame(data_mc, columns=features_mc)
+    df_cdch_full = pd.DataFrame(data_cdch, columns=features_cdch)
+    df_spx_full = pd.DataFrame(data_spx, columns=features_spx)
+
+    # Group by event_id
+    df_mc = df_mc_full.groupby('event_id')
+    df_cdch = df_cdch_full.groupby('event_id')
+    df_spx = df_spx_full.groupby('event_id')
+
+    # Get the list of unique event IDs from MCTruth (assuming this is the master list)
+    event_ids = df_mc_full['event_id'].unique()
+    event_ids = event_ids.astype(int)
+    event_ids.sort()
+
+    print(f"Found {len(event_ids)} events.")
+
+    # Collect events
+    events = []
+    for i_ev in event_ids:
+        try:
+            event_data = [
+                df_mc.get_group(i_ev),
+                df_cdch.get_group(i_ev),
+                df_spx.get_group(i_ev)
+            ]
+        except KeyError as e:
+            print(f"Warning: Event {i_ev} missing in one of the datasets: {e}")
+            continue  # skip this event if incomplete
+        events.append(event_data)
+
+    print(f"Loaded {len(events)} complete events.")
+    return np.array(events, dtype=object)
+
+
+def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
     """
-    Apply simple cuts to filter noise hits on a DataFrame.
+    Apply cuts on a feature: cut_low < feature < cut_high to filter hits on a DataFrame.
 
     Parameters:
-    hits_df (pd.DataFrame): DataFrame containing hit information.
-    ampl_cut (float): Minimum amplitude threshold.
-    charge_cut (float): Minimum charge threshold.
+    hits_df (pd.DataFrame): DataFrame containing hits information.
+    feature (string): feature name on which apply the filter
+    cut_low (float): lower cut
+    cut_high (float): higher cut
 
     Returns:
     pd.DataFrame: Filtered DataFrame containing only hits passing the cuts.
     """
     # Apply filtering conditions
     filter_condition = (
-        (hits['ampl0'] >= ampl_cut) | 
-        (hits['charge0'] >= charge_cut)
+        (hits[feature] >= cut_low) & 
+        (hits[feature] <= cut_high)
     )
     
     # Return the filtered DataFrame
     return hits[filter_condition]
 
-def split_cdch_sectors(hits, list_cdch_sectors=[[11, 0, 1], [2, 3, 4], [5, 6, 7]]):
+def split_cdch_sectors(cdch_hits, list_cdch_sectors=[[11, 0, 1], [2, 3, 4], [5, 6, 7]]):
     """
-    Divide hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
+    Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
 
     Parameters:
     hits_df (pd.DataFrame): DataFrame containing hit information, including 'wireID'.
@@ -66,19 +101,19 @@ def split_cdch_sectors(hits, list_cdch_sectors=[[11, 0, 1], [2, 3, 4], [5, 6, 7]
     list of pd.DataFrame: List of DataFrames, each containing hits belonging to a group of CDCH sectors.
     """
     hits_splitted = [
-        hits[hits['wireID'].mod(192).floordiv(16).isin(cdch_sectors)]
+        cdch_hits[cdch_hits['wire_id'].mod(192).floordiv(16).isin(cdch_sectors)]
         for cdch_sectors in list_cdch_sectors
     ]
 
     return hits_splitted
 
-def build_edges_alternate_layers(hits, distance_same_layer=2):
+def build_edges_alternate_layers(cdch_hits, distance_same_layer=2):
     """
     We select all edges connecting
     a hit on layer i to a hit on layer i + 1.
     """
     layers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    hits_layers = [hits[hits['wireID'].floordiv(192) == layer] for layer in layers]
+    hits_layers = [cdch_hits[cdch_hits['wire_id'].floordiv(192) == layer] for layer in layers]
     edge_index = []
     edge_attr = []
     
@@ -90,8 +125,8 @@ def build_edges_alternate_layers(hits, distance_same_layer=2):
         # Make edges between hits on the i-th layer
         # up to a distance of distance_same_layer wires
         same_layer_pairs = []
-        hitIDs = hits_layer_i['hitID'].values
-        wireIDs = hits_layer_i['wireID'].values
+        hitIDs = hits_layer_i['hit_id'].values
+        wireIDs = hits_layer_i['wire_id'].values
 
         for j, hitID_1 in enumerate(hitIDs):
             for k, hitID_2 in enumerate(hitIDs):
@@ -100,16 +135,16 @@ def build_edges_alternate_layers(hits, distance_same_layer=2):
 
         # Compute edge attributes (dx, dy, dt) for same-layer pairs
         if same_layer_pairs:
-            same_layer_pairs = pd.DataFrame(same_layer_pairs, columns=['hitID_1', 'hitID_2'])
-            same_layer_hits_pairs = same_layer_pairs.merge(hits_layer_i[['hitID', 'x0', 'y0', 't']],
-                                                           left_on='hitID_1', right_on='hitID')
-            same_layer_hits_pairs = same_layer_hits_pairs.merge(hits_layer_i[['hitID', 'x0', 'y0', 't']],
-                                                                left_on='hitID_2', right_on='hitID',
+            same_layer_pairs = pd.DataFrame(same_layer_pairs, columns=['hit_id_1', 'hit_id_2'])
+            same_layer_hits_pairs = same_layer_pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']],
+                                                           left_on='hit_id_1', right_on='hit_id')
+            same_layer_hits_pairs = same_layer_hits_pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']],
+                                                                left_on='hit_id_2', right_on='hit_id',
                                                                 suffixes=('_1', '_2'))
 
             dx_same = same_layer_hits_pairs['x0_2'] - same_layer_hits_pairs['x0_1']
             dy_same = same_layer_hits_pairs['y0_2'] - same_layer_hits_pairs['y0_1']
-            dt_same = same_layer_hits_pairs['t_2'] - same_layer_hits_pairs['t_1']
+            dt_same = same_layer_hits_pairs['time_2'] - same_layer_hits_pairs['time_1']
 
             edge_index.append(same_layer_pairs.values.T)  # Shape: (2, num_same_layer_edges)
             edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
@@ -125,24 +160,24 @@ def build_edges_alternate_layers(hits, distance_same_layer=2):
         if len(hits_layer_i) == 0 or len(hits_layer_i_plus_1) == 0:
             continue  # Skip layers with no hits
 
-        # Get hitIDs of hits in the two layers
-        hitID_i = hits_layer_i['hitID'].values
-        hitID_i_plus_1 = hits_layer_i_plus_1['hitID'].values
+        # Get hit_id of hits in the two layers
+        hitID_i = hits_layer_i['hit_id'].values
+        hitID_i_plus_1 = hits_layer_i_plus_1['hit_id'].values
 
         # Create all possible pairs of hitIDs between the two layers
         pairs = pd.MultiIndex.from_product([hitID_i, hitID_i_plus_1]).to_frame(index=False)
-        pairs.columns = ['hitID_1', 'hitID_2']
+        pairs.columns = ['hit_id_1', 'hit_id_2']
 
         # Compute edge attributes (dx, dy, dt)
-        hits_pairs = pairs.merge(hits_layer_i[['hitID', 'x0', 'y0', 't']], left_on='hitID_1', right_on='hitID')
-        hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hitID', 'x0', 'y0', 't']], left_on='hitID_2', right_on='hitID', suffixes=('_1', '_2'))
+        hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_1', right_on='hit_id')
+        hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_2', right_on='hit_id', suffixes=('_1', '_2'))
 
         dx = hits_pairs['x0_2'] - hits_pairs['x0_1']
         dy = hits_pairs['y0_2'] - hits_pairs['y0_1']
-        dt = hits_pairs['t_2'] - hits_pairs['t_1']
+        dt = hits_pairs['time_2'] - hits_pairs['time_1']
 
         # Append results to the edge list
-        edge_index.append(pairs[['hitID_1', 'hitID_2']].values.T)  # Shape: (2, num_edges)
+        edge_index.append(pairs[['hit_id_1', 'hit_id_2']].values.T)  # Shape: (2, num_edges)
         edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
 
     # Combine edge indices and attributes from all layers
@@ -164,10 +199,12 @@ def build_event_graphs(hits):
     At index 2: edge matrix
     """
 
+    print("Building the CDCH graph")
+
     graphs = []
     
     # Filter hits first
-    hits = filter_hits(hits)
+    #hits = filter_hits(hits)
     # Divide into sectors
     hits_sectors = split_cdch_sectors(hits)
 
@@ -175,7 +212,7 @@ def build_event_graphs(hits):
     for sector_hits in hits_sectors:
 
         # X = (n_hits, n_features)
-        feature_names = ['t', 'charge0', 'charge1', 'ampl0', 'ampl1', 'x0', 'y0', 'z', 'phi', 'theta']
+        feature_names = ['x0', 'y0', 'theta', 'phi', 'ztimediff', 'time', 'ampl']
 
         X = sector_hits[feature_names].values.astype(np.float32)  # Convert to NumPy array with float32 dtype
         # Check for zero-size array
@@ -185,10 +222,10 @@ def build_event_graphs(hits):
         # Reset index for hits in a set of sectors to start from 0 in this sub-graph
         sector_hits = sector_hits.reset_index(drop=True)
         # Store old ID
-        old_hits_id = sector_hits['hitID'].values
-        map_abs_idx_sector_idx = dict(zip(sector_hits['hitID'].values, sector_hits.index))
+        old_hits_id = sector_hits['hit_id'].values
+        map_abs_idx_sector_idx = dict(zip(sector_hits['hit_id'].values, sector_hits.index))
         # Assign new "local" ID
-        sector_hits['hitID'] = sector_hits.index
+        sector_hits['hit_id'] = sector_hits.index
         
         # edge index and edge attributes
         # (2, n_edges) and (n_edges, n_features)
@@ -202,14 +239,14 @@ def build_event_graphs(hits):
         edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
 
         truth_hits = sector_hits['truth'].values
-        nexthit_id = sector_hits['nextHit'].values
+        nexthit_id = sector_hits['next_hit_id'].values
 
         for k, e in enumerate(edge_index.T):
             hit_i = int(e[0])
             hit_j = int(e[1])
             if nexthit_id[hit_i] in old_hits_id and nexthit_id[hit_j] in old_hits_id:
-                if truth_hits[hit_i] and truth_hits[hit_j] and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
-                    edge_truth[k] = 1
+                if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
+                    edge_truth[k] = truth_hits[hit_i]
 
         graph = {'X' : X, 'edge_index' : edge_index, 'edge_attr' : edge_attr, 'truth' : edge_truth}
         graphs.append(graph)
@@ -218,7 +255,7 @@ def build_event_graphs(hits):
 
 if __name__ == "__main__" :
 
-    PLOT = False
+    PLOT = True
     TIME = True
     RECREATE = True
     
@@ -228,20 +265,24 @@ if __name__ == "__main__" :
         """
         import time
 
-        filename = "/home/antu/KaleGraph/dataset/1e6TrainSet_CDCH.txt"
-        events = load_data(filename)
+        file_id = "01002"
+        events = load_data(file_id)
 
         # Define the output file
-        output_dir = "/home/antu/KaleGraph/graph_files_train_1e6"
+        output_dir = "./"  # "/home/antu/KaleGraph/graph_files_train_1e6"
         # Should create an entry in a README file to write info about the
         # created graphs...
 
         # Loop over events
-        for ev, hits_event in enumerate(events):
+        for ev, event in enumerate(events):
+
+            mc_truth = event[0]
+            cdch_event = event[1]
+            spx_event = event[2]
 
             t_start = time.time()
 
-            graphs = build_event_graphs(hits_event)
+            graphs = build_event_graphs(cdch_event)
 
             # Loop over sections in an event
             for sec, graph in enumerate(graphs):
@@ -259,12 +300,12 @@ if __name__ == "__main__" :
                     """
                     Plot a graph
                     """
-                    from plot_graph import plot
+                    from utils.plot_graph import plot
 
                 
                     plot(graph['X'], graph['edge_index'], graph['truth'])
 
             t_stop = time.time()
             print(f"Time to make the graphs of an event = {(t_stop - t_start):.3f}.")
-            
+            break
             
