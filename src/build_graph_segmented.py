@@ -59,7 +59,7 @@ def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturi
                 df_spx.get_group(i_ev)
             ]
         except KeyError as e:
-            print(f"Warning: Event {i_ev} missing in one of the datasets: {e}")
+            #print(f"Warning: Event {i_ev} missing in one of the datasets: {e}")
             continue  # skip this event if incomplete
         events.append(event_data)
 
