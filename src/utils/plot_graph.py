@@ -3,6 +3,7 @@ Plotting the 2D graph of hits based on the 'edgeMatrix.txt' file
 """
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.cm import tab10
 from utils.tools import load_graph_npz
 
 
@@ -74,7 +75,8 @@ def plot(hits, edge_matrix, y):
 
     colors = ["pink", "blue"] # colors for CDCH and TC nodes
     fmts = ["o", "s"] # fmts for CDCH and TC nodes
-    
+    signal_color = ['blue', 'orange', 'red', 'purple', 'green', 'brown', 'black', 'magenta'] # colors for different turns
+
     # Plot nodes and edges
     # Watch out: if you load from a npz file, you can access only the normalized x and y coordinates...
     x_min = 1000
@@ -106,9 +108,9 @@ def plot(hits, edge_matrix, y):
         #hittype_j, xj, yj = calculate_coordinates(j, pixel_geo)
         plt.errorbar(xj, yj, fmt=fmts[hittype_j], alpha=.5, markersize=10, color=colors[hittype_j])
         if y[k] > 0:
-            plt.plot([xi, xj], [yi, yj], 'green', linewidth=2, linestyle='-', alpha=1)
+            plt.plot([xi, xj], [yi, yj], color=signal_color[int(y[k]) - 1], linewidth=2, linestyle='-', alpha=1)
         else:
-            plt.plot([xi, xj], [yi, yj], 'grey', linewidth=0.5, linestyle='-.', alpha=.25)
+            plt.plot([xi, xj], [yi, yj], color='grey', linewidth=0.5, linestyle='-.', alpha=.25)
             
     plt.axis('off')
     plt.axis('equal')

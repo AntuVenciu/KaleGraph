@@ -4,6 +4,7 @@ a set of sectors.
 We make use of a pandas DataFrame to store hit and informations
 """
 import os
+import time
 
 import numpy as np
 import pandas as pd
@@ -253,59 +254,65 @@ def build_event_graphs(hits):
 
     return graphs
 
-if __name__ == "__main__" :
+def build_dataset(file_ids,
+                  output_dir="./",
+                  time_it=False,
+                  plot_it=False,
+                  recreate=True):
+    """
+    Build all graphs in file_ids and save them to *.npz files.
+    Only for cdch events at the moment.
+    file_ids (array of string): numbers of the files with events to use for the graph creation, provided as string.
+    """
 
-    PLOT = True
-    TIME = True
-    RECREATE = True
-    
-    if (TIME):
-        """
-        Time these functions
-        """
-        import time
-
-        file_id = "01002"
-        events = load_data(file_id)
-
-        # Define the output file
-        output_dir = "./"  # "/home/antu/KaleGraph/graph_files_train_1e6"
-        # Should create an entry in a README file to write info about the
-        # created graphs...
+    for file_id in file_ids:
+        
+        if time_it:
+            t_start = time.time()
 
         # Loop over events
+        events = load_data(file_id)
+
         for ev, event in enumerate(events):
 
             mc_truth = event[0]
             cdch_event = event[1]
             spx_event = event[2]
 
-            t_start = time.time()
-
             graphs = build_event_graphs(cdch_event)
 
             # Loop over sections in an event
             for sec, graph in enumerate(graphs):
 
-                output_filename = os.path.join(output_dir, f"event{ev}_sectors{sec}.npz")
+                output_filename = os.path.join(output_dir, f"file{file_id}_event{ev}_sectors{sec}.npz")
 
-                # Save existing file only if RECREATE is true
-                if RECREATE:
+                # Save existing file only if recreate is true
+                if recreate:
                     np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
                 else:
                     if not os.path.isfile(output_filename):
                         np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
 
-                if (PLOT):
+                if plot_it:
                     """
                     Plot a graph
                     """
                     from utils.plot_graph import plot
 
-                
                     plot(graph['X'], graph['edge_index'], graph['truth'])
 
+        if time_it:
             t_stop = time.time()
-            print(f"Time to make the graphs of an event = {(t_stop - t_start):.3f}.")
-            break
-            
+            print(f"{(t_stop - t_start) / len(events) :.3f} s per event to build {len(events)} events.")
+
+    print("Dataset *.npz files created in {output_dir}")
+
+
+if __name__ == "__main__" :
+
+    PLOT = True
+    TIME = False
+    RECREATE = True
+    file_ids = ['01001']
+
+    build_dataset(file_ids, time_it=TIME, plot_it=PLOT, recreate=RECREATE)
