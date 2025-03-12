@@ -45,6 +45,17 @@ class ObjectModel(nn.Module):
         return self.layers(C)
 
 class InteractionNetwork(MessagePassing):
+    """
+    In the paper "Charged Particle Tracking via Edge-Classifying Interation Network",
+    The Interaction Network is built as:
+    A relational model R1 acting to transform edge representation eij
+    eij = R1 (eij, xi, xj)
+    A object model O acts to transform node features xi
+    xi = O (xi, Sum R1 (eij))
+    A second relational model R2 acts to classify edges (output size = 1)
+    w = R2 (eij, xi, xj)
+    Using the variable T, the message passing can be performed T times.
+    """
     def __init__(self,
                  hidden_size,
                  node_features_dim,
