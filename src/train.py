@@ -18,6 +18,11 @@ from torch.profiler import profile, record_function, ProfilerActivity
 from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset
 from utils.build_graph import build_adjacency_matrix, load_data
+from sklearn.metrics import confusion_matrix
+
+int max_n_turns = 5
+
+
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -28,13 +33,29 @@ def train(args, model, device, train_loader, optimizer, epoch):
         #t0 = time()
         data = data.to(device)
         output = model(data.x, data.edge_index, data.edge_attr)
+        
+        
         y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-        yn = y.numpy()
+        
+        
+        
+        #convert to one hot encoding.        
+        y = y.to(torch.int)
+        y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
+        y_one_hot_encoding[torch.arange(len(y)), y] = 1
+        
+        #check if there are any true edges in the graph. (
+        yn = y_one_hot_encoding.numpy()
         if yn.sum() == 0:
             continue
-        # weight loss function by a factor = N_0 / N_1 to count the unbalance beween 1 and 0
-        class_weight = torch.Tensor([ len(yn) / yn.sum()])
-        loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight)
+        # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
+        class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
+         
+        loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+        loss = loss_fn(output, y_one_hot_encoding)
+        
+        losses.append(loss)
+        
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -54,91 +75,70 @@ def train(args, model, device, train_loader, optimizer, epoch):
 def validate(model, device, val_loader):
     model.eval()
     losses = []
-    opt_thlds, accs, tps, fns = [], [], [], []
+    y_pred_val = torch.empty(0, dtype=torch.long)
+    y_true_val = torch.empty(0, dtype=torch.long)
+    
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
             data = data.to(device)
             output = model(data.x, data.edge_index, data.edge_attr)
             y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-            if y.numpy().sum() == 0:
-                continue
-            class_weight = torch.Tensor([ len(y.numpy()) / y.numpy().sum()])
-            loss = F.binary_cross_entropy_with_logits(output, y, reduction='mean', pos_weight=class_weight).item()
-            losses.append(loss)
-            TP = torch.sum((y==1) & (output>thld)).item()
-            TN = torch.sum((y==0) & (output<thld)).item()
-            FP = torch.sum((y==0) & (output>thld)).item()
-            FN = torch.sum((y==1) & (output<thld)).item()
-            acc = (TP+TN)/(TP+TN+FP+FN)
-            if TP + FN == 0:
-                TPR = 0
-            else:
-                TPR = TP / (TP + FN)
-            if TN + FP == 0:
-                TNR = 0
-            else:
-                TNR = TN / (TN + FP)
-            accs.append(acc)
-            tps.append(TPR)
-            fns.append(TNR)
-            """
-            # define optimal threshold (thld) where TPR = TNR 
-            diff, opt_thld, opt_acc = 100, 0, 0
-            best_tpr, best_tnr = 0, 0
-            for thld in np.arange(0.05, 1, 0.1):
-                TP = torch.sum((y==1) & (output>thld)).item()
-                TN = torch.sum((y==0) & (output<thld)).item()
-                FP = torch.sum((y==0) & (output>thld)).item()
-                FN = torch.sum((y==1) & (output<thld)).item()
-                acc = (TP+TN)/(TP+TN+FP+FN)
-                if TP + FN == 0:
-                    TPR = 0
-                else:
-                    TPR = TP / (TP + FN)
-                if TN + FP == 0:
-                    TNR = 0
-                else:
-                    TNR = TN / (TN + FP)
-                #print(f"threshold {thld}: acc = {acc:.3f}, TP = {TPR:.3f}, TN = {TNR:.3f}")
-                delta = abs(TPR-TNR)
-                if (delta < diff):
-                    diff, opt_thld, opt_acc, best_tpr = delta, thld, acc, TPR
+            #perform one hot encoding trasformation.    
+            y = y.to(torch.int)
+            y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
+            y_one_hot_encoding[torch.arange(len(y)), y] = 1
             
-            opt_thlds.append(opt_thld)
-            accs.append(opt_acc)
-            tps.append(best_tpr)
-            """
-    print("... val accuracy = ", np.mean(accs))
-    print("... val TPR = ", np.mean(tps))
-    return losses, accs, tps, fns #np.mean(opt_thlds) 
+            #if there are no edges.
+            if y.numpy().sum() == 0:
+                continue    
+            # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
+            class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
+            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+            loss = loss_fn(output, y_one_hot_encoding)
+            losses.append(loss)
+            #let's build a confusion matrix for all turns.
+            torch.cat((y_pred_val, torch.argmax(output, dim = 1)))
+            torch.cat((y_true_val, torch.argmax(y_one_hot_encoding, dim = 1)))
+            
+    Confusion_mat = confusion_matrix(y_pred_val.to_numpy(), y_true_val.to_numpy())
+    return  Confusion_mat, np.mean(losses) 
 
 def test(model, device, test_loader, thld=0.5):
     model.eval()
     losses, accs = [], []
+    y_pred_test = torch.empty(0, dtype=torch.long)
+    y_true_test = torch.empty(0, dtype=torch.long)
+    
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
             data = data.to(device)
             output = model(data.x, data.edge_index, data.edge_attr)
-            TP = torch.sum((data.y==1).squeeze() & 
-                           (output>thld).squeeze()).item()
-            TN = torch.sum((data.y==0).squeeze() & 
-                           (output<thld).squeeze()).item()
-            FP = torch.sum((data.y==0).squeeze() & 
-                           (output>thld).squeeze()).item()
-            FN = torch.sum((data.y==1).squeeze() & 
-                           (output<thld).squeeze()).item()            
-            acc = (TP+TN)/(TP+TN+FP+FN)
+            
+            
+            
+            
+            #let's build a confusion matrix for all turns.
+            torch.cat((y_pred_test, torch.argmax(output, dim = 1)))
+            torch.cat((y_true_test, data.y))
+
+           
             y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-            class_weight = torch.Tensor([len(y.numpy()) / y.numpy().sum()])
-            loss = F.binary_cross_entropy_with_logits(output, y, 
-                                                      reduction='mean', pos_weight=class_weight).item()
-            accs.append(acc)
+            
+            #perform one hot encoding trasformation.    
+            y = y.to(torch.int)
+            y_init = torch.zeros(len(y), max_n_turns+1)
+            y_init[torch.arange(len(y)), y] = 1
+            
+            class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
+            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+            loss = loss_fn(output, y_one_hot_encoding)
             losses.append(loss)
             #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
 
-    print('... test loss: {:.4f}\n... test accuracy: {:.4f}'
-          .format(np.mean(losses), np.mean(accs)))
-    return losses, accs #np.mean(losses), np.mean(accs)
+    print('... test loss: {:.4f}\n'
+          .format(np.mean(losses)))
+    Confusion_mat = confusion_matrix(y_pred_test.to_numpy(), y_true_test.to_numpy())
+    return Confusion_mat, np.mean(losses) #np.mean(losses), np.mean(accs)
 
 def main():
 
@@ -221,9 +221,9 @@ def main():
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
         train_loss = train(args, model, device, train_loader, optimizer, epoch)
-        val_loss, val_acc, val_tpr, val_tnr = validate(model, device, val_loader)
+        Val_confusion_mat, val_loss= validate(model, device, val_loader)
         #print('...optimal threshold', thld)
-        test_loss, test_acc = test(model, device, test_loader, thld=thld)
+        Test_confusion_mat, test_loss = test(model, device, test_loader, thld=thld)
         scheduler.step()
         """
         if args.save_model:
@@ -234,9 +234,9 @@ def main():
 
         output['train_loss'] += train_loss
         output['val_loss'] += val_loss
-        output['val_tpr'] += val_tpr
+        #output['val_tpr'] += val_tpr
         output['test_loss'] += test_loss
-        output['test_acc'] += test_acc
+        #output['test_acc'] += test_acc
         
         """
         np.save('train_output/train{}_PyG_{}_{}GeV_redo'
