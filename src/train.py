@@ -34,10 +34,10 @@ def train(args, model, device, train_loader, optimizer, epoch):
         output = model(data.x, data.edge_index, data.edge_attr)
 
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
-        print("y = ", y)
-        print("output = ", output)
-        
-        #convert to one hot encoding.        
+        # Have some problems here
+        if max(y.numpy()) > 5:
+            continue
+        #convert to one hot encoding.
         y = y.to(torch.int)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
         y_one_hot_encoding[torch.arange(len(y)), y] = 1
@@ -51,9 +51,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
          
         loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
         loss = loss_fn(output, y_one_hot_encoding)
-        
-        losses.append(loss)
-        
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
@@ -80,15 +77,18 @@ def validate(model, device, val_loader):
         for batch_idx, data in enumerate(val_loader):
             data = data.to(device)
             output = model(data.x, data.edge_index, data.edge_attr)
-            y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
+            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
             #perform one hot encoding trasformation.    
             y = y.to(torch.int)
-            y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
-            y_one_hot_encoding[torch.arange(len(y)), y] = 1
-            
+            # Have some problems here
+            if max(y.numpy()) > 5:
+                continue
             #if there are no edges.
             if y.numpy().sum() == 0:
-                continue    
+                continue
+            y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
+            y_one_hot_encoding[torch.arange(len(y)), y] = 1
+            yn = y_one_hot_encoding.numpy()
             # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
@@ -115,17 +115,19 @@ def test(model, device, test_loader, thld=0.5):
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_test, torch.argmax(output, dim = 1)))
             torch.cat((y_true_test, data.y))
+            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
 
-            y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-
-            #perform one hot encoding trasformation.    
+            #perform one hot encoding trasformation.
             y = y.to(torch.int)
+            # Have some problems here
+            if max(y.numpy()) > 5:
+                continue
             y_init = torch.zeros(len(y), max_n_turns+1)
             y_init[torch.arange(len(y)), y] = 1
-
-            class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
+            yn = y_init.numpy()
+            class_weights = torch.sum(y_init, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-            loss = loss_fn(output, y_one_hot_encoding)
+            loss = loss_fn(output, y_init)
             losses.append(loss)
             #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
 
@@ -189,7 +191,7 @@ def main():
     params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
     
     train_set = GraphDataset(partition['train'])
-    train_set.plot(1)
+    train_set.plot(8)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)

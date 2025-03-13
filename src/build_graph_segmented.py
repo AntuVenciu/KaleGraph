@@ -108,7 +108,7 @@ def split_cdch_sectors(cdch_hits, list_cdch_sectors=[[11, 0, 1], [2, 3, 4], [5, 
 
     return hits_splitted
 
-def build_edges_alternate_layers(cdch_hits, distance_same_layer=2):
+def build_edges_alternate_layers(cdch_hits, distance_same_layer=3):
     """
     We select all edges connecting
     a hit on layer i to a hit on layer i + 1.
@@ -246,6 +246,8 @@ def build_event_graphs(hits):
             hit_i = int(e[0])
             hit_j = int(e[1])
             if nexthit_id[hit_i] in old_hits_id and nexthit_id[hit_j] in old_hits_id:
+                # La seconda condizione assicura la "direzionalità" del grafo
+                # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
                 if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
                     edge_truth[k] = truth_hits[hit_i]
 
