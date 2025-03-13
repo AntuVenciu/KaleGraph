@@ -92,7 +92,7 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
     
     # Return the filtered DataFrame
     return hits[filter_condition]
-
+#[0,1,2,3,4,5,6,7,8,9,10,11],[11, 0, 1], [2, 3, 4], [5, 6, 7]]):
 def split_cdch_sectors(cdch_hits, list_cdch_sectors=[[0,1,2,3,4,5,6,7,8,9,10,11],[11, 0, 1], [2, 3, 4], [5, 6, 7]]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
@@ -136,7 +136,7 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
             for k, hitID_2 in enumerate(hitIDs):
                 if k > j and abs(wireIDs[j] - wireIDs[k]) <= distance_same_layer:
                     same_layer_pairs.append((hitID_1, hitID_2))
-
+        
         # Compute edge attributes (dx, dy, dt) for same-layer pairs
         if same_layer_pairs:
             same_layer_pairs = pd.DataFrame(same_layer_pairs, columns=['hit_id_a', 'hit_id_b'])
@@ -170,11 +170,10 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
             # Get hit_id of hits in the two layers
             hitID_i = hits_layer_i['hit_id'].values
             hitID_i_plus_1 = hits_layer_i_plus_1['hit_id'].values
-
             # Create all possible pairs of hitIDs between the two layers
             pairs = pd.MultiIndex.from_product([hitID_i, hitID_i_plus_1]).to_frame(index=False)
             pairs.columns = ['hit_id_a', 'hit_id_b']
-    
+
             # Compute edge attributes (dx, dy, dt)
             hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_a', right_on='hit_id')
             hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_b', right_on='hit_id', suffixes=('_1', '_2'))
@@ -182,11 +181,11 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
             dx = hits_pairs['x0_2'] - hits_pairs['x0_1']
             dy = hits_pairs['y0_2'] - hits_pairs['y0_1']
             dt = hits_pairs['time_2'] - hits_pairs['time_1']
-    
+
             # Append results to the edge list
             edge_index.append(pairs[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_edges)
             edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
-   
+            
 
     # Combine edge indices and attributes from all layers
     if len(edge_index) > 0:
@@ -236,7 +235,6 @@ def build_edges_spx(SPX_hits):
         dx_same = couple__hits_pixels['x0_2'] - couple__hits_pixels['x0_1']
         dy_same = couple__hits_pixels['y0_2'] - couple__hits_pixels['y0_1']
         dt_same = couple__hits_pixels['time_2'] - couple__hits_pixels['time_1']
-
         edge_index.append(couple__hits_pixels[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_same_layer_edges)
         edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
         
@@ -268,12 +266,13 @@ def build_edges_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     sector_hits_placeholder = sector_hits
     # Store old ID
     old_hits_id = sector_hits_placeholder['hit_id'].values
-    
+    sector_hits_placeholder = sector_hits_placeholder.reset_index(drop=True)
 
     feature_names = ['hit_id','x0', 'y0', 'ztimediff', 'time', 'ampl']
-    X = sector_hits_placeholder[feature_names].values.astype(np.float32)# Convert to NumPy array with float32 dtype
+    X = sector_hits_placeholder[feature_names]
 
-    
+    X.loc[:,'hit_id'] = sector_hits_placeholder.index
+    X = X.values.astype(np.float32)# Convert to NumPy array with float32 dtype    
     # Check for zero-size array
     if X.size == 0 or X.shape[1] == 0:
         return [],[],[],[]
@@ -281,12 +280,15 @@ def build_edges_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     # Reset index for hits in a set of sectors to start from 0 in this sub-graph
     sector_hits_placeholder = sector_hits_placeholder.reset_index(drop=True)
     map_abs_idx_sector_idx = dict(zip(sector_hits_placeholder['hit_id'].values, sector_hits_placeholder.index))
+    map_back = dict(zip(sector_hits_placeholder.index,sector_hits_placeholder['hit_id'].values))
     # Assign new "local" ID
     sector_hits_placeholder['hit_id'] = sector_hits_placeholder.index
 
     # edge index and edge attributes
     # (2, n_edges) and (n_edges, n_features)
     edge_index, edge_attr = build_edges_alternate_layers(sector_hits_placeholder, depth_conn_cdch, same_layer_cdch_dist_conn)
+    
+    
     
     # Check that at least one graph exist
     if len(edge_index) < 1:
@@ -305,7 +307,7 @@ def build_edges_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
             # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
             if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
                 edge_truth[k] = truth_hits[hit_i]
-                    
+         
     return X, edge_index, edge_attr, edge_truth           
                 
 

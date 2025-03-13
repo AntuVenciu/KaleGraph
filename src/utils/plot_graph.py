@@ -90,10 +90,17 @@ def plot(hits, edge_matrix, y):
     #points that are not masked by mask2 : those are cdch hits 
     plt.errorbar(hits[1].loc[mask2].to_numpy(), hits[2].loc[mask2].to_numpy(), fmt = fmts[0], markersize = 10, color = colors[0])    
     
+    
+    for i in range(len(hits[1].loc[mask1].to_numpy())):
+        plt.text(hits[1].loc[mask1].to_numpy()[i], hits[2].loc[mask1].to_numpy()[i] + 0.5, str(int(hits[0].loc[mask1].to_numpy()[i])), fontsize=8, ha='center', color='black', fontweight='bold')            
+    
+    
+    for i in range(len(hits[1].loc[mask2].to_numpy())):
+        plt.text(hits[1].loc[mask2].to_numpy()[i], hits[2].loc[mask2].to_numpy()[i] + 0.5, str(int(hits[0].loc[mask2].to_numpy()[i])), fontsize=8, ha='center', color='black', fontweight='bold')     
     #draw edges.
     ID_FirstNode = edge_matrix.iloc[0].to_numpy()
-    ID_SecondNode = edge_matrix.iloc[1].to_numpy()
-
+    ID_SecondNode = edge_matrix.iloc[1].to_numpy()  
+    
     
     #WARNING: NOT ALL NODES ARE CONNECTED! so not all nodes are in the edge matrix, put nan as temporary measurement.
     
@@ -105,15 +112,15 @@ def plot(hits, edge_matrix, y):
 
     # let's find valid indexes
     valid_indices = ~np.isnan(x_first_node) & ~np.isnan(y_first_node) & ~np.isnan(x_second_node) & ~np.isnan(y_second_node)
-
-
+    
     x_first_node = x_first_node[valid_indices]
     y_first_node = y_first_node[valid_indices]
     x_second_node = x_second_node[valid_indices]
     y_second_node = y_second_node[valid_indices]
+   
 
     y_true = y[0].to_numpy().astype(int)[valid_indices]
-
+    
 
 
     segments = np.stack([np.column_stack([x_first_node, y_first_node]), 
