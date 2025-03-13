@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import tab10
 from utils.tools import load_graph_npz
-
+from matplotlib.collections import LineCollection
 
 
 # Functions to draw CDCH planes and sectors
@@ -45,12 +45,13 @@ def calculate_coordinates(node_id, pixel_geo):
         hittype = 1
     return hittype, x, y
 
-def plot(hits, edge_matrix, y, CDCHHitsArrayLength):
+def plot(hits, edge_matrix, y):
     """
     Plot the graph based on an edge matrix of shape 2 x num_edges
     containing hit ID connected
     """
-
+    #print(np.shape(hits))
+    
     # Draw CDCH scheleton
     num_circles = 10
     min_radius = 17
@@ -75,68 +76,73 @@ def plot(hits, edge_matrix, y, CDCHHitsArrayLength):
 
     colors = ["pink", "blue"] # colors for CDCH and TC nodes
     fmts = ["o", "s"] # fmts for CDCH and TC nodes
-    signal_color = ['blue', 'orange', 'red', 'purple', 'green', 'brown', 'black', 'magenta'] # colors for different turns
-
+    signal_color = ['grey','blue', 'orange', 'red', 'purple', 'green', 'brown', 'magenta', 'cyan', 'yellow', 'black'] # colors for different turns
+    ev_value = [0.1,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9,0.9]
     # Plot nodes and edges
     # Watch out: if you load from a npz file, you can access only the normalized x and y coordinates...
-    x_min = 1000
-    y_min = 1000
-    x_max = -1000
-    y_max = -1000
     
-    for k, e in enumerate(edge_matrix.T):
+    mask1 = hits[0] >= 1920
+    mask2 = hits[0] < 1920
 
-        # nodes ID
-        i = int(e[0])
-        j = int(e[1])
-        hittype_i = 0
-        hittype_j = 0
-        
-
-        xi = 0
-        yi = 0
-        xj = 0
-        yj = 0
-        
-        if(i>=1920):
-            hittype_i= 1
-            xi = hits[i-1920+CDCHHitsArrayLength, 0]
-            yi = hits[i-1920+CDCHHitsArrayLength, 1]
-        else:
-            xi = hits[i, 0]
-            yi = hits[i, 1]
-        if(j>=1920):
-            hittype_j = 1
-            xj = hits[j-1920+CDCHHitsArrayLength, 0]
-            yj = hits[j-1920+CDCHHitsArrayLength, 1]
-        else:
-            xj = hits[j, 0]
-            yj = hits[j, 1]
+    #points that are not masked by mask 1: those are spx hits.
+    plt.errorbar(hits[1].loc[mask1].to_numpy(), hits[2].loc[mask1].to_numpy(), fmt = fmts[1], markersize = 10, color = colors[1])   
+    
+    #points that are not masked by mask2 : those are cdch hits 
+    plt.errorbar(hits[1].loc[mask2].to_numpy(), hits[2].loc[mask2].to_numpy(), fmt = fmts[0], markersize = 10, color = colors[0])    
+    
+    #draw edges.
+    ID_FirstNode = edge_matrix.iloc[0].to_numpy()
+    ID_SecondNode = edge_matrix.iloc[1].to_numpy()
 
     
-        # Try to visualize from npz files
-        
+    #WARNING: NOT ALL NODES ARE CONNECTED! so not all nodes are in the edge matrix, put nan as temporary measurement.
+    
+    x_first_node = np.array([hits.loc[hits[0] == id_, 1].values[0] if not hits.loc[hits[0] == id_, 1].empty else np.nan for id_ in ID_FirstNode])
+    y_first_node = np.array([hits.loc[hits[0] == id_, 2].values[0] if not hits.loc[hits[0] == id_, 2].empty else np.nan for id_ in ID_FirstNode])
+
+    x_second_node = np.array([hits.loc[hits[0] == id_, 1].values[0] if not hits.loc[hits[0] == id_, 1].empty else np.nan for id_ in ID_SecondNode])
+    y_second_node = np.array([hits.loc[hits[0] == id_, 2].values[0] if not hits.loc[hits[0] == id_, 2].empty else np.nan for id_ in ID_SecondNode])
+
+    # let's find valid indexes
+    valid_indices = ~np.isnan(x_first_node) & ~np.isnan(y_first_node) & ~np.isnan(x_second_node) & ~np.isnan(y_second_node)
+
+
+    x_first_node = x_first_node[valid_indices]
+    y_first_node = y_first_node[valid_indices]
+    x_second_node = x_second_node[valid_indices]
+    y_second_node = y_second_node[valid_indices]
+
+    y_true = y[0].to_numpy().astype(int)[valid_indices]
 
 
 
-        x_max = max(x_max, max(xi, xj))
-        x_min = min(x_min, min(xi, xj))
-        y_max = max(y_max, max(yi, yj))
-        y_min = min(y_min, min(yi, yj))
-        
-        #hittype_i, xi, yi = calculate_coordinates(i, pixel_geo)
-        plt.errorbar(xi, yi, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=colors[hittype_i])
-        #hittype_j, xj, yj = calculate_coordinates(j, pixel_geo)
-        plt.errorbar(xj, yj, fmt=fmts[hittype_j], alpha=.5, markersize=10, color=colors[hittype_j])
-        if y[k] > 0:
-            plt.plot([xi, xj], [yi, yj], color=signal_color[int(y[k]) - 1], linewidth=2, linestyle='-', alpha=1)
-        else:
-            plt.plot([xi, xj], [yi, yj], color='grey', linewidth=0.5, linestyle='-.', alpha=.25)
-            
+    segments = np.stack([np.column_stack([x_first_node, y_first_node]), 
+                         np.column_stack([x_second_node, y_second_node])], axis=1)
+                         
+    
+    # take only valid edges
+    colors = np.array(signal_color)[y_true]
+    
+    # also here, but this is for visualization effects
+    evanescence_values = np.array(ev_value)[y_true]
+    
+    colors_with_alpha = [(*plt.matplotlib.colors.to_rgba(c)[:3], alpha) for c, alpha in zip(colors, evanescence_values)]
+
+    lc = LineCollection(segments, colors=colors_with_alpha, linewidths=1, linestyles='-')
+    
+    # plot segments
+    ax = plt.gca()  
+    ax.add_collection(lc) 
+    
+    plt.draw()  # Ridisegna la figura mantenendo i punti già plottati
+    
+
+
+    
     plt.axis('off')
     plt.axis('equal')
-    plt.xlim(x_min - 1, x_max + 1)
-    plt.ylim(y_min - 1, y_max + 1)
+    plt.xlim(min(min(x_first_node)-1, min(x_second_node)), max(max(x_first_node), max(x_second_node))+1)
+    plt.ylim(min(min(y_first_node)-1, min(y_second_node)), max(max(y_first_node), max(y_second_node))+1)
     plt.title('Graph Nodes and Edges')
     plt.show()
 
