@@ -45,7 +45,7 @@ def calculate_coordinates(node_id, pixel_geo):
         hittype = 1
     return hittype, x, y
 
-def plot(hits, edge_matrix, y):
+def plot(hits, edge_matrix, y, CDCHHitsArrayLength):
     """
     Plot the graph based on an edge matrix of shape 2 x num_edges
     containing hit ID connected
@@ -89,14 +89,35 @@ def plot(hits, edge_matrix, y):
         # nodes ID
         i = int(e[0])
         j = int(e[1])
-
-        # Try to visualize from npz files
         hittype_i = 0
-        xi = hits[i, 0]
-        yi = hits[i, 1]
         hittype_j = 0
-        xj = hits[j, 0]
-        yj = hits[j, 1]
+        
+
+        xi = 0
+        yi = 0
+        xj = 0
+        yj = 0
+        
+        if(i>=1920):
+            hittype_i= 1
+            xi = hits[i-1920+CDCHHitsArrayLength, 0]
+            yi = hits[i-1920+CDCHHitsArrayLength, 1]
+        else:
+            xi = hits[i, 0]
+            yi = hits[i, 1]
+        if(j>=1920):
+            hittype_j = 1
+            xj = hits[j-1920+CDCHHitsArrayLength, 0]
+            yj = hits[j-1920+CDCHHitsArrayLength, 1]
+        else:
+            xj = hits[j, 0]
+            yj = hits[j, 1]
+
+    
+        # Try to visualize from npz files
+        
+
+
 
         x_max = max(x_max, max(xi, xj))
         x_min = min(x_min, min(xi, xj))

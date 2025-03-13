@@ -122,12 +122,12 @@ def test(model, device, test_loader, thld=0.5):
             # Have some problems here
             if max(y.numpy()) > 5:
                 continue
-            y_init = torch.zeros(len(y), max_n_turns+1)
-            y_init[torch.arange(len(y)), y] = 1
-            yn = y_init.numpy()
-            class_weights = torch.sum(y_init, dim = 0)/yn.sum()
+            y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
+            y_one_hot_encoding[torch.arange(len(y)), y] = 1
+            yn = y_one_hot_encoding.numpy()
+            class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-            loss = loss_fn(output, y_init)
+            loss = loss_fn(output, y_one_hot_encoding)
             losses.append(loss)
             #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
 

@@ -90,7 +90,7 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
     # Return the filtered DataFrame
     return hits[filter_condition]
 
-def split_cdch_sectors(cdch_hits, list_cdch_sectors=[[11, 0, 1], [2, 3, 4], [5, 6, 7]]):
+def split_cdch_sectors(cdch_hits, list_cdch_sectors=[[0,1,2,3,4,5,6,7,8,9,10,11],[11, 0, 1], [2, 3, 4], [5, 6, 7]]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
 
@@ -108,10 +108,10 @@ def split_cdch_sectors(cdch_hits, list_cdch_sectors=[[11, 0, 1], [2, 3, 4], [5, 
 
     return hits_splitted
 
-def build_edges_alternate_layers(cdch_hits, distance_same_layer=3):
+def build_edges_alternate_layers(cdch_hits, distance_same_layer=3,  n_successive_layer = 1, connection_depth_spx = 3):
     """
     We select all edges connecting
-    a hit on layer i to a hit on layer i + 1.
+    a hit on layer i to a hit on layer i + n_successive_layer.
     """
     layers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     hits_layers = [cdch_hits[cdch_hits['wire_id'].floordiv(192) == layer] for layer in layers]
@@ -136,11 +136,11 @@ def build_edges_alternate_layers(cdch_hits, distance_same_layer=3):
 
         # Compute edge attributes (dx, dy, dt) for same-layer pairs
         if same_layer_pairs:
-            same_layer_pairs = pd.DataFrame(same_layer_pairs, columns=['hit_id_1', 'hit_id_2'])
+            same_layer_pairs = pd.DataFrame(same_layer_pairs, columns=['hit_id_a', 'hit_id_b'])
             same_layer_hits_pairs = same_layer_pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']],
-                                                           left_on='hit_id_1', right_on='hit_id')
+                                                           left_on='hit_id_a', right_on='hit_id')
             same_layer_hits_pairs = same_layer_hits_pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']],
-                                                                left_on='hit_id_2', right_on='hit_id',
+                                                                left_on='hit_id_b', right_on='hit_id',
                                                                 suffixes=('_1', '_2'))
 
             dx_same = same_layer_hits_pairs['x0_2'] - same_layer_hits_pairs['x0_1']
@@ -154,32 +154,36 @@ def build_edges_alternate_layers(cdch_hits, distance_same_layer=3):
         
         if layer == 9:
             break  # Stop at the last layer
+        for n in range(1,n_successive_layer+1):
+            if(layer+n > 9):
+                break
+         
+            # Get hits for the next layer
+            hits_layer_i_plus_1 = hits_layers[i + n]
 
-        # Get hits for the next layer
-        hits_layer_i_plus_1 = hits_layers[i + 1]
+            if len(hits_layer_i) == 0 or len(hits_layer_i_plus_1) == 0:
+                continue  # Skip layers with no hits
 
-        if len(hits_layer_i) == 0 or len(hits_layer_i_plus_1) == 0:
-            continue  # Skip layers with no hits
+            # Get hit_id of hits in the two layers
+            hitID_i = hits_layer_i['hit_id'].values
+            hitID_i_plus_1 = hits_layer_i_plus_1['hit_id'].values
 
-        # Get hit_id of hits in the two layers
-        hitID_i = hits_layer_i['hit_id'].values
-        hitID_i_plus_1 = hits_layer_i_plus_1['hit_id'].values
-
-        # Create all possible pairs of hitIDs between the two layers
-        pairs = pd.MultiIndex.from_product([hitID_i, hitID_i_plus_1]).to_frame(index=False)
-        pairs.columns = ['hit_id_1', 'hit_id_2']
-
-        # Compute edge attributes (dx, dy, dt)
-        hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_1', right_on='hit_id')
-        hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_2', right_on='hit_id', suffixes=('_1', '_2'))
-
-        dx = hits_pairs['x0_2'] - hits_pairs['x0_1']
-        dy = hits_pairs['y0_2'] - hits_pairs['y0_1']
-        dt = hits_pairs['time_2'] - hits_pairs['time_1']
-
-        # Append results to the edge list
-        edge_index.append(pairs[['hit_id_1', 'hit_id_2']].values.T)  # Shape: (2, num_edges)
-        edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
+            # Create all possible pairs of hitIDs between the two layers
+            pairs = pd.MultiIndex.from_product([hitID_i, hitID_i_plus_1]).to_frame(index=False)
+            pairs.columns = ['hit_id_a', 'hit_id_b']
+    
+            # Compute edge attributes (dx, dy, dt)
+            hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_a', right_on='hit_id')
+            hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_b', right_on='hit_id', suffixes=('_1', '_2'))
+    
+            dx = hits_pairs['x0_2'] - hits_pairs['x0_1']
+            dy = hits_pairs['y0_2'] - hits_pairs['y0_1']
+            dt = hits_pairs['time_2'] - hits_pairs['time_1']
+    
+            # Append results to the edge list
+            edge_index.append(pairs[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_edges)
+            edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
+   
 
     # Combine edge indices and attributes from all layers
     if len(edge_index) > 0:
@@ -188,7 +192,139 @@ def build_edges_alternate_layers(cdch_hits, distance_same_layer=3):
 
     return edge_index, edge_attr
 
-def build_event_graphs(hits):
+
+
+def build_edges_spx(SPX_hits):
+    print("Building SPX Graph")
+    feature_names = ['x0', 'y0', 'z0', 'time']
+    #define N_wires to shift indexes.
+    N_wires = 1920
+    SPX_hits['hit_id']  += N_wires
+    SPX_hits['next_hit_id'] += N_wires
+    edge_index = []
+    edge_attr = []
+    truth_hits = SPX_hits['truth'].values
+
+    nexthit_id = SPX_hits['next_hit_id'].values
+    X = SPX_hits[feature_names].values.astype(np.float32)
+    couple_pixels = []
+    
+    hitIDs = SPX_hits['hit_id'].values  
+    pixelIDs = SPX_hits['pixel_id'].values
+        
+    if(X.size == 0 or X.shape[1] == 0):
+        return MainGraph
+    SPX_hits = SPX_hits.reset_index(drop = True)
+    #now we have to create all possible connections (we have few hits in the SPX hits)
+    for j, hitID_1 in enumerate(hitIDs):
+        for k, hitID_2 in enumerate(hitIDs): 
+            if j <k: 
+                couple_pixels.append((hitID_1, hitID_2))
+                
+                
+
+    if couple_pixels:
+        couple_pixels = pd.DataFrame(couple_pixels, columns=['hit_id_a', 'hit_id_b'])
+        couple__hits_pixels = couple_pixels.merge(SPX_hits[['hit_id', 'x0', 'y0', 'time']],
+                                                           left_on='hit_id_a', right_on='hit_id')
+
+        couple__hits_pixels = couple__hits_pixels.merge(SPX_hits[['hit_id', 'x0', 'y0', 'time']],
+                                                                left_on='hit_id_b', right_on='hit_id',
+                                                                suffixes=('_1', '_2'))
+
+        dx_same = couple__hits_pixels['x0_2'] - couple__hits_pixels['x0_1']
+        dy_same = couple__hits_pixels['y0_2'] - couple__hits_pixels['y0_1']
+        dt_same = couple__hits_pixels['time_2'] - couple__hits_pixels['time_1']
+
+        edge_index.append(couple__hits_pixels[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_same_layer_edges)
+        edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
+        
+        
+    if len(edge_index) > 0:
+        edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
+        edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
+        
+    # Evaluate edges truth label
+    edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
+    for k, e in enumerate(edge_index.T):
+            hit_i = int(e[0])-N_wires
+            hit_j = int(e[1])-N_wires
+            if(truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ((nexthit_id[int(hit_i)]-N_wires)==hit_j or (nexthit_id[int(hit_j)]-N_wires)==hit_i)) :
+                edge_truth[k] = truth_hits[hit_i]
+
+    #implement ampl as a column of 1 on the dataset..
+    X = np.array([np.pad(subarr, (0, 1), constant_values=1) for subarr in X], dtype=object)
+        
+    return X, edge_index, edge_attr, edge_truth
+
+
+def build_edges_cdch(hits_cdch, sector_hits):
+    # X = (n_hits, n_features)
+    #feature_names = ['x0', 'y0', 'theta', 'phi', 'ztimediff', 'time', 'ampl']
+    feature_names = ['x0', 'y0', 'ztimediff', 'time', 'ampl']
+    X = sector_hits[feature_names].values.astype(np.float32)  # Convert to NumPy array with float32 dtype
+    # Check for zero-size array
+    if X.size == 0 or X.shape[1] == 0:
+        return [],[],[],[]
+
+    # Reset index for hits in a set of sectors to start from 0 in this sub-graph
+    sector_hits = sector_hits.reset_index(drop=True)
+    # Store old ID
+    old_hits_id = sector_hits['hit_id'].values
+    map_abs_idx_sector_idx = dict(zip(sector_hits['hit_id'].values, sector_hits.index))
+    # Assign new "local" ID
+    sector_hits['hit_id'] = sector_hits.index
+      
+    # edge index and edge attributes
+    # (2, n_edges) and (n_edges, n_features)
+    edge_index, edge_attr = build_edges_alternate_layers(sector_hits)
+    
+    # Check that at least one graph exist
+    if len(edge_index) < 1:
+        return [],[],[],[]
+
+    # Evaluate edges truth label
+    edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
+    truth_hits = sector_hits['truth'].values
+    nexthit_id = sector_hits['next_hit_id'].values
+
+    for k, e in enumerate(edge_index.T):
+        hit_i = int(e[0])
+        hit_j = int(e[1])
+        if nexthit_id[hit_i] in old_hits_id and nexthit_id[hit_j] in old_hits_id:
+            # La seconda condizione assicura la "direzionalità" del grafo
+            # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
+            if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
+                edge_truth[k] = truth_hits[hit_i]
+                    
+    return X, edge_index, edge_attr, edge_truth           
+                
+                
+def build_CDCH_graphs_features(hits_cdch):                  
+    print("Building the CDCH graph")
+    hits_sectors = split_cdch_sectors(hits_cdch)   
+    X_sectors_CDCH = []
+    edge_index_sectors_CDCH = []
+    edge_attr_sectors_CDCH = []
+    edge_truth_sectors_CDCH = []
+    # Loop over sectors and create single graphs
+    for sector_hits in hits_sectors:
+        X_cdch, edge_index_cdch,edge_attr_cdch, edge_truth_cdch = build_edges_cdch(hits_cdch, sector_hits)
+        if(len(X_cdch) == 0):
+            continue;
+        X_sectors_CDCH.append(X_cdch)
+        edge_index_sectors_CDCH.append(edge_index_cdch)
+        edge_attr_sectors_CDCH.append(edge_attr_cdch)
+        edge_truth_sectors_CDCH.append(edge_truth_cdch)    
+        
+        
+        
+    return X_sectors_CDCH, edge_index_sectors_CDCH, edge_attr_sectors_CDCH, edge_truth_sectors_CDCH
+         
+     
+     
+    
+def build_event_graphs(hits_cdch, hits_spx):
     """
     Build the graph.
     Input:
@@ -199,62 +335,28 @@ def build_event_graphs(hits):
     At index 1: matrix of edge features R of shape = (num_edges, num_edge_features)
     At index 2: edge matrix
     """
-
-    print("Building the CDCH graph")
-
-    graphs = []
     
-    # Filter hits first
-    #hits = filter_hits(hits)
-    # Divide into sectors
-    hits_sectors = split_cdch_sectors(hits)
+    
+    
+    graphs = []
+    #we make this array to make plotting easier...
+    len_array_CDCH_hits = []
 
-    # Loop over sectors and create single graphs
-    for sector_hits in hits_sectors:
+    X_spx, edge_index_spx, edge_attr_spx , edge_truth_spx= build_edges_spx(hits_spx)
+    Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_edge_truth_CDCH = build_CDCH_graphs_features(hits_cdch) 
 
-        # X = (n_hits, n_features)
-        feature_names = ['x0', 'y0', 'theta', 'phi', 'ztimediff', 'time', 'ampl']
-
-        X = sector_hits[feature_names].values.astype(np.float32)  # Convert to NumPy array with float32 dtype
-        # Check for zero-size array
-        if X.size == 0 or X.shape[1] == 0:
-            continue
-
-        # Reset index for hits in a set of sectors to start from 0 in this sub-graph
-        sector_hits = sector_hits.reset_index(drop=True)
-        # Store old ID
-        old_hits_id = sector_hits['hit_id'].values
-        map_abs_idx_sector_idx = dict(zip(sector_hits['hit_id'].values, sector_hits.index))
-        # Assign new "local" ID
-        sector_hits['hit_id'] = sector_hits.index
-        
-        # edge index and edge attributes
-        # (2, n_edges) and (n_edges, n_features)
-        edge_index, edge_attr = build_edges_alternate_layers(sector_hits)
-
-        # Check that at least one graph exist
-        if len(edge_index) < 1:
-            continue
-
-        # Evaluate edges truth label
-        edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
-
-        truth_hits = sector_hits['truth'].values
-        nexthit_id = sector_hits['next_hit_id'].values
-
-        for k, e in enumerate(edge_index.T):
-            hit_i = int(e[0])
-            hit_j = int(e[1])
-            if nexthit_id[hit_i] in old_hits_id and nexthit_id[hit_j] in old_hits_id:
-                # La seconda condizione assicura la "direzionalità" del grafo
-                # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
-                if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
-                    edge_truth[k] = truth_hits[hit_i]
-
+    
+    
+    for i, item in enumerate(Vec_X_sector_CDCH):
+        X = np.concatenate((Vec_X_sector_CDCH[i],X_spx))
+        edge_index =np.concatenate((Vec_edge_index_CDCH[i],edge_index_spx), axis = 1)
+        edge_attr =np.concatenate((Vec_edge_attr_CDCH[i],edge_attr_spx))
+        edge_truth = np.hstack((Vec_edge_truth_CDCH[i],edge_truth_spx))
         graph = {'X' : X, 'edge_index' : edge_index, 'edge_attr' : edge_attr, 'truth' : edge_truth}
         graphs.append(graph)
+        len_array_CDCH_hits.append(len(Vec_X_sector_CDCH[i]))
 
-    return graphs
+    return graphs, len_array_CDCH_hits
 
 def build_dataset(file_ids,
                   input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC",
@@ -282,7 +384,7 @@ def build_dataset(file_ids,
             cdch_event = event[1]
             spx_event = event[2]
 
-            graphs = build_event_graphs(cdch_event)
+            graphs, len_array_cdch_hits = build_event_graphs(cdch_event, spx_event)
 
             # Loop over sections in an event
             for sec, graph in enumerate(graphs):
@@ -302,7 +404,7 @@ def build_dataset(file_ids,
                     """
                     from utils.plot_graph import plot
 
-                    plot(graph['X'], graph['edge_index'], graph['truth'])
+                    plot(graph['X'], graph['edge_index'], graph['truth'], len_array_cdch_hits[sec])
 
         if time_it:
             t_stop = time.time()
@@ -313,9 +415,9 @@ def build_dataset(file_ids,
 
 if __name__ == "__main__" :
 
-    PLOT = False
+    PLOT = True
     TIME = False
     RECREATE = True
-    file_ids = [f'0{int(idx)}' for idx in range(1000, 1003, 1)]
+    file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
 
-    build_dataset(file_ids, input_dir='../dataset', output_dir="../dataset", time_it=TIME, plot_it=PLOT, recreate=RECREATE)
+    build_dataset(file_ids, input_dir='.', output_dir=".", time_it=TIME, plot_it=PLOT, recreate=RECREATE)
