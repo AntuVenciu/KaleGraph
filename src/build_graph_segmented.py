@@ -311,9 +311,9 @@ def build_dataset(file_ids,
 
 if __name__ == "__main__" :
 
-    PLOT = True
+    PLOT = False
     TIME = False
     RECREATE = True
-    file_ids = ['01001']
+    file_ids = [f'0{int(idx)}' for idx in range(1000, 1100, 1)]
 
-    build_dataset(file_ids, output_dir="../dataset", time_it=TIME, plot_it=PLOT, recreate=RECREATE)
+    build_dataset(file_ids, output_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC", time_it=TIME, plot_it=PLOT, recreate=RECREATE)
