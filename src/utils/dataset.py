@@ -39,7 +39,7 @@ class GraphDataset(Dataset):
                 edge_attr = torch.from_numpy(graph['edge_attr'])
                 edge_index = torch.from_numpy(graph['edge_index'])
                 # evaluate truth of edges
-                y = torch.from_numpy(graph['edge_truth'])
+                y = torch.from_numpy(graph['truth'])
 
                 # make graph undirected
                 row, col = edge_index
@@ -87,9 +87,9 @@ class GraphDataset(Dataset):
         
         from utils.plot_graph import plot
 
-
-        with np.load(self.graph_files[idx]) as graph:
-            plot(graph['X'], graph['edge_index'], graph['truth'])
+        try:
+            with np.load(self.graph_files[idx]) as graph:
+                plot(graph['X'], graph['edge_index'], graph['truth'])
             
         except FileNotFoundError:
             print(f"{self.graph_files[idx]} doesn't exist. Can not plot it.")

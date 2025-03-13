@@ -21,7 +21,7 @@ from utils.dataset import GraphDataset
 from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 
-int max_n_turns = 5
+max_n_turns = 5
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -172,7 +172,7 @@ def main():
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
-    if len(glob.glob(graph_files)) < 10000:
+    if len(graph_files) < 1000:
         print("Dataset not loaded correctly") 
         return
 
