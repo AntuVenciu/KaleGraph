@@ -58,6 +58,27 @@ class GraphDataset(Dataset):
         except FileNotFoundError:
             print(f"{self.graph_files[idx]} doesn't exist.")
 
+    def get_X_dim(self):
+        """
+        Return number of features of nodes X
+        """
+        try:
+            with np.load(self.graph_files[0]) as graph:
+                return graph['X'].shape[1]
+        except FileNotFoundError:
+            print(f"{self.graph_files[0]} doesn't exist.")
+
+    def get_edge_attr_dim(self):
+        """
+        Return number of features of edges
+        """
+        try:
+            with np.load(self.graph_files[0]) as graph:
+                return graph['edge_attr'].shape[1]
+        except FileNotFoundError:
+            print(f"{self.graph_files[0]} doesn't exist.")
+
+            
     def plot(self, idx):
         """
         Plot a graph

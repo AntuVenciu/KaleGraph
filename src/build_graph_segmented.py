@@ -255,6 +255,7 @@ def build_event_graphs(hits):
     return graphs
 
 def build_dataset(file_ids,
+                  input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC",
                   output_dir="./",
                   time_it=False,
                   plot_it=False,
@@ -271,7 +272,7 @@ def build_dataset(file_ids,
             t_start = time.time()
 
         # Loop over events
-        events = load_data(file_id)
+        events = load_data(file_id, input_dir=input_dir)
 
         for ev, event in enumerate(events):
 
@@ -284,7 +285,7 @@ def build_dataset(file_ids,
             # Loop over sections in an event
             for sec, graph in enumerate(graphs):
 
-                output_filename = os.path.join(output_dir, f"file{file_id}_event{ev}_sectors{sec}.npz")
+                output_filename = os.path.join(output_dir, f"{output_dir}/file{file_id}_event{ev}_sectors{sec}.npz")
 
                 # Save existing file only if recreate is true
                 if recreate:
@@ -315,4 +316,4 @@ if __name__ == "__main__" :
     RECREATE = True
     file_ids = ['01001']
 
-    build_dataset(file_ids, time_it=TIME, plot_it=PLOT, recreate=RECREATE)
+    build_dataset(file_ids, output_dir="../dataset", time_it=TIME, plot_it=PLOT, recreate=RECREATE)

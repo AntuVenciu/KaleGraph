@@ -2,6 +2,7 @@
 Train your model
 """
 import argparse
+import glob
 import os
 from time import time
 
@@ -17,12 +18,10 @@ from torch.profiler import profile, record_function, ProfilerActivity
 
 from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset
-from utils.build_graph import build_adjacency_matrix, load_data
+from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 
 int max_n_turns = 5
-
-
 
 
 def train(args, model, device, train_loader, optimizer, epoch):
@@ -33,12 +32,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
         #t0 = time()
         data = data.to(device)
         output = model(data.x, data.edge_index, data.edge_attr)
-        
-        
-        y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-        
-        
-        
+
+        y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
+
         #convert to one hot encoding.        
         y = y.to(torch.int)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
@@ -113,22 +109,18 @@ def test(model, device, test_loader, thld=0.5):
         for batch_idx, data in enumerate(test_loader):
             data = data.to(device)
             output = model(data.x, data.edge_index, data.edge_attr)
-            
-            
-            
-            
+
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_test, torch.argmax(output, dim = 1)))
             torch.cat((y_true_test, data.y))
 
-           
             y, output = data.y.clone().to(torch.float32), output.squeeze(1).clone().to(torch.float32)
-            
+
             #perform one hot encoding trasformation.    
             y = y.to(torch.int)
             y_init = torch.zeros(len(y), max_n_turns+1)
             y_init[torch.arange(len(y)), y] = 1
-            
+
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
             loss = loss_fn(output, y_one_hot_encoding)
@@ -172,42 +164,45 @@ def main():
     device = torch.device('cpu')
     torch.manual_seed(args.seed)
 
-    # Load adjacency matrix
-    adj_matrix = build_adjacency_matrix(f_cdch=0.05)
-    
     # Load the dataset
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
-    
-    inputdir = f"../dataset"
-    
-    train_file = f"{inputdir}/1e6TrainSet_CDCH.txt"
-    test_file = f"{inputdir}/1e6TestSet_CDCH.txt"
-    val_file = f"{inputdir}/1e6ValSet_CDCH.txt"
 
-    partition = {'train': train_file,
-                 'test':  test_file,
-                 'val': val_file}
+    inputdir = "../dataset"
+    graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
-    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 0}
+    # Check that the dataset has already been created
+    if len(glob.glob(graph_files)) < 10000:
+        print("Dataset not loaded correctly") 
+        return
+
+    # Split the dataset
+    f_train = 0.75
+    f_test = 0.15
+
+    partition = {'train': graph_files[: int(f_train * len(graph_files))],
+                 'test':  graph_files[int(f_train * len(graph_files)) : int((f_train + f_test)*len(graph_files))],
+                 'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
+
+    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 4}
     
-    train_set = GraphDataset(partition['train'], adj_matrix, max_size=10000)
-    #train_set.plot(0)
+    train_set = GraphDataset(partition['train'])
+    train_set.plot(0)
     train_loader = DataLoader(train_set, **params)
-    test_set = GraphDataset(partition['test'], adj_matrix, maxsize=1000)
+    test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)
-    val_set = GraphDataset(partition['val'], adj_matrix, maxsize=1000)
+    val_set = GraphDataset(partition['val'])
     val_loader = DataLoader(val_set, **params)
     
     print(f"Number of train data samples : {train_set.len()}")
     print(f"Number of tests data samples : {test_set.len()}")
     print(f"Number of valid data samples : {val_set.len()}")
 
-    # Set to the correct number of features in utils/dataset.py
-    NUM_NODE_FEATURES = 12
-    NUM_EDGE_FEATURES = 7
+    # Set to the correct number of features
+    NUM_NODE_FEATURES = train_set.get_X_dim()
+    NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
 
-    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=2).to(device)
+    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=1).to(device)
     model = torch.compile(model)
     total_trainable_params = sum(p.numel() for p in model.parameters())
     print('total trainable params:', total_trainable_params)
@@ -231,7 +226,6 @@ def main():
                        "trained_models/train{}_PyG_{}_epoch{}_{}GeV_redo.pt"
                        .format(args.sample, args.construction, epoch, args.pt))
         """
-
         output['train_loss'] += train_loss
         output['val_loss'] += val_loss
         #output['val_tpr'] += val_tpr
@@ -265,5 +259,3 @@ def main():
 if __name__ == '__main__':
     torch.set_num_threads(1)
     main()
-
-
