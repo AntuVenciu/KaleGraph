@@ -30,10 +30,6 @@ class RelationalModel(nn.Module):
     def forward(self, m):
         return self.layers(m)
 
-
-
-
-
 class ObjectModel(nn.Module):
     def __init__(self, input_size, output_size, hidden_size):
         super(ObjectModel, self).__init__()
