@@ -6,6 +6,7 @@ import glob
 import os
 from time import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch_geometric
@@ -23,7 +24,6 @@ from sklearn.metrics import confusion_matrix
 
 max_n_turns = 5
 
-
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     epoch_t0 = time()
@@ -34,7 +34,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
         output = model(data.x, data.edge_index, data.edge_attr)
 
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
-
+        print("y = ", y)
+        print("output = ", output)
+        
         #convert to one hot encoding.        
         y = y.to(torch.int)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
@@ -184,10 +186,10 @@ def main():
                  'test':  graph_files[int(f_train * len(graph_files)) : int((f_train + f_test)*len(graph_files))],
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
-    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 4}
+    params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
     
     train_set = GraphDataset(partition['train'])
-    train_set.plot(0)
+    train_set.plot(1)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)

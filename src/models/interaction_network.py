@@ -12,7 +12,7 @@ from torch_geometric.nn import MessagePassing
 from torch.nn import Sequential as Seq, Linear, ReLU, Sigmoid
 
 
-int max_n_turns = 5
+max_n_turns = 5
 
 class RelationalModel(nn.Module):
     def __init__(self, input_size, output_size, hidden_size):
@@ -69,8 +69,8 @@ class InteractionNetwork(MessagePassing):
         self.R1 = RelationalModel(2 * node_features_dim + edge_features_dim, edge_features_dim, hidden_size)
         #build update function for nodes
         self.O = ObjectModel(node_features_dim + edge_features_dim, node_features_dim, hidden_size)
-        #build classifier function for edges: here change output dim from 1 to max_n_turns
-        self.R2 = RelationalModel(2 * node_features_dim + edge_features_dim, max_n_turns+1, hidden_size)
+        #build classifier function for edges: here change output dim from 1 to max_n_turns + 1 (accounting for the case 0 = noise)
+        self.R2 = RelationalModel(2 * node_features_dim + edge_features_dim, max_n_turns + 1, hidden_size)
         
         self.E: Tensor = Tensor()
 

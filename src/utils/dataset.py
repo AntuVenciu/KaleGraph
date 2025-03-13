@@ -42,12 +42,13 @@ class GraphDataset(Dataset):
                 y = torch.from_numpy(graph['truth'])
 
                 # make graph undirected
+                """
                 row, col = edge_index
                 row, col = torch.cat([row, col], dim=0), torch.cat([col, row], dim=0)
                 edge_index = torch.stack([row, col], dim=0)
                 edge_attr = torch.cat([edge_attr, -1*edge_attr], dim=1)
                 y = torch.cat([y,y])
-
+                """
                 data = Data(x=x,
                             edge_index=edge_index,
                             edge_attr=edge_attr,
