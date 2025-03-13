@@ -28,10 +28,10 @@ truth = $({N_edges})$ whether an edge is a signal (truth = NTurn in the CYLDCH) 
 The GNN acts like:
 
 1. Update of the node features with message passing between connected nodes
-   $$ X_i \to O(X_i, \sum_j R_1(edge_{ij}, X_i, X_j)) $$
+   $$X_i \to O(X_i, \sum_j R_1(edge_{ij}, X_i, X_j))$$
    where O and $R_2$ are neural networks made of many dense layers
 2. After passage 1. is iterated over a certain number of times (to be tuned), we draw the prediction
-   $$ w_{ij} = R_2(edge_{ij}, X_i, X_j)$$
+   $$w_{ij} = R_2(edge_{ij}, X_i, X_j)$$
 
 ## Repository organization
 
