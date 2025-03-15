@@ -13,8 +13,8 @@ import torch
 
 import numpy as np
 import pandas as pd
+from collections import defaultdict
 
-N_wires = 1920
 
 
 def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"):
@@ -93,11 +93,14 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
     # Return the filtered DataFrame
     return hits[filter_condition]
 
+
+
 def split_cdch_sectors(cdch_hits,
-                       list_cdch_sectors=[[11, 0, 1],
+                       list_cdch_sectors=[
                                           [1, 2, 3],
                                           [3, 4, 5],
-                                          [5, 6, 7]]):
+                                          [5, 6, 7]
+                                          ]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
 
@@ -115,7 +118,6 @@ def split_cdch_sectors(cdch_hits,
         cdch_hits[cdch_hits['wire_id'].mod(192).floordiv(16).isin(cdch_sectors)]
         for cdch_sectors in list_cdch_sectors
     ]
-
     return hits_splitted
 
 def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_same_layer=3 ):
@@ -205,7 +207,7 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
 def build_graph_spx(SPX_hits, index_start_at=0):
     # X = (n_hits, n_features)
     #feature_names = ['x0', 'y0', 'z0', 'time', 'ampl']
-    # ATTENTION! Number of features of CDCH and SPX hit must be the same
+    # WARNING! Number of features of CDCH and SPX hit must be the same
 
     print("Building SPX Graph")
     feature_names = ['x0', 'y0', 'z0', 'time', 'ampl', 'isSPX']
@@ -214,29 +216,44 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     # Add also a flag to distinguish between CDCH and SPX
     SPX_hits['ampl'] = np.float32(1.)
     SPX_hits['isSPX'] = np.float32(1.)
-    
+    SPX_hits = SPX_hits.reset_index(drop = True)    
     edge_index = []
     edge_attr = []
     truth_hits = SPX_hits['truth'].values
     nexthit_id = SPX_hits['next_hit_id'].values
-    X = SPX_hits[feature_names].values.astype(np.float32)
+
 
     couple_pixels = []
-    
-    hitIDs = SPX_hits['hit_id'].values  
-    pixelIDs = SPX_hits['pixel_id'].values
-        
-    if(X.size == 0 or X.shape[1] == 0):
-        return MainGraph #???
 
-    SPX_hits = SPX_hits.reset_index(drop = True)
     
+    
+    
+    map_idx = dict(zip(SPX_hits['hit_id'].values, SPX_hits.index))
+    
+    #Put this defaultdict: this is to avoid crash as the last hit which has nexthit = -1, also for noise
+    map_idx = defaultdict(lambda:-100, map_idx)
+
+    # Assign new "local" ID
+    SPX_hits['hit_id'] = SPX_hits.index + index_start_at
+    #save hits info
+    X = SPX_hits[feature_names].values.astype(np.float32)
+        
+    print(len(X))
+    
+    #revert back to perform connections with map 
+    SPX_hits['hit_id'] = SPX_hits.index 
+    if(X.size == 0 or X.shape[1] == 0):
+        return -1
+    hitIDs = SPX_hits['hit_id']  
+
+
+
     #now we have to create all possible connections (we have few hits in the SPX hits)
     for j, hitID_1 in enumerate(hitIDs):
         for k, hitID_2 in enumerate(hitIDs): 
             if j <k: 
                 couple_pixels.append((hitID_1, hitID_2))
-
+    
     if couple_pixels:
         couple_pixels = pd.DataFrame(couple_pixels, columns=['hit_id_a', 'hit_id_b'])
         couple__hits_pixels = couple_pixels.merge(SPX_hits[['hit_id', 'x0', 'y0', 'time']],
@@ -252,33 +269,42 @@ def build_graph_spx(SPX_hits, index_start_at=0):
         # Attenzione! non è così che funziona la rete: la rete non usa la feature 'hit id'
         # per individuare l'hit corretto, ma bensì il suo indice all'interno del vettore X.
         # E' per questo che si fa il comando reset_index
+        
         edge_index.append(couple__hits_pixels[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_same_layer_edges)
         edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
 
     if len(edge_index) > 0:
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
-        
+    else:
+        return [],[],[],[]
     # Evaluate edges truth label
     edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
+    print(edge_index)
+    print(nexthit_id)
+    print(map_idx)
     for k, e in enumerate(edge_index.T):
-            hit_i = int(e[0])-index_start_at
-            hit_j = int(e[1])-index_start_at
-            if(truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ((nexthit_id[int(hit_i)]-index_start_at)==hit_j or (nexthit_id[int(hit_j)]-index_start_at)==hit_i)) :
+            hit_i = int(e[0])
+            hit_j = int(e[1])
+            if(truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and (map_idx[nexthit_id[int(hit_i)]]==hit_j or map_idx[nexthit_id[int(hit_j)]]==hit_i)) :
                 edge_truth[k] = truth_hits[hit_i]
-        
+    #correct for starting index.
+    edge_index[0] +=index_start_at
+    edge_index[1] +=index_start_at
+    
     return X, edge_index, edge_attr, edge_truth
 
 
 def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn):
     # X = (n_hits, n_features)
     #feature_names = ['x0', 'y0', 'ztimediff', 'time', 'ampl']
-    # ATTENTION! Number of features of CDCH and SPX hit must be the same
+    # Warning! Number of features of CDCH and SPX hit must be the same
     
-    #make a copy of sectors_hits, otherwise it will impair the plotting because ordering is done on reference instead of copy :)
+
     sector_hits_placeholder = sector_hits
     # Store old ID
     old_hits_id = sector_hits_placeholder['hit_id'].values
+    # Reset index for hits in a set of sectors to start from 0 in this sub-graph
     sector_hits_placeholder = sector_hits_placeholder.reset_index(drop=True)
 
     # X non ha bisogno della variabile hit_id.
@@ -289,16 +315,20 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     sector_hits_placeholder['isSPX'] = np.float32(0.)
     X = sector_hits_placeholder[feature_names]
     
-    #X.loc[:,'hit_id'] = sector_hits_placeholder.index
+
     X = X.values.astype(np.float32)# Convert to NumPy array with float32 dtype    
     # Check for zero-size array
     if X.size == 0 or X.shape[1] == 0:
         return [],[],[],[]
+        
+    
     print(f"\t\t\tNumber of hits in this CDCH subgraph ", X.shape[0])
-    # Reset index for hits in a set of sectors to start from 0 in this sub-graph
-    sector_hits_placeholder = sector_hits_placeholder.reset_index(drop=True)
+
     map_abs_idx_sector_idx = dict(zip(sector_hits_placeholder['hit_id'].values, sector_hits_placeholder.index))
-    map_back = dict(zip(sector_hits_placeholder.index,sector_hits_placeholder['hit_id'].values))
+    
+    #Put this defaultdict: this is to avoid crash as the last hit which has nexthit = -1, also for noise
+    map_abs_idx_sector_idx = defaultdict(lambda:-100, map_abs_idx_sector_idx)
+    
     # Assign new "local" ID
     sector_hits_placeholder['hit_id'] = sector_hits_placeholder.index
 
@@ -309,12 +339,12 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     # Check that at least one graph exist
     if len(edge_index) < 1:
         return [],[],[],[]
-
+    
     # Evaluate edges truth label 
     edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
     truth_hits = sector_hits_placeholder['truth'].values
     nexthit_id = sector_hits_placeholder['next_hit_id'].values
-
+    
     for k, e in enumerate(edge_index.T):
         hit_i = int(e[0])
         hit_j = int(e[1])
@@ -323,31 +353,40 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
             # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
             if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
                 edge_truth[k] = truth_hits[hit_i]
-         
+    
+
     return X, edge_index, edge_attr, edge_truth           
 
 def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer_to_connect_spx = 1 ):
-    print("\t\t\t SPX hits = ", hits_spx)
-    print("\t\t\t CDCH hits = ", hits_cdch)
+    #print("\t\t\t SPX hits = ", hits_spx)
+    #print("\t\t\t CDCH hits = ", hits_cdch)
     edge_index = []
     edge_attr = []
     edge_truth = []
+
+    
     
     truth_cdch = hits_cdch['truth'].values
     truth_spx = hits_spx['truth'].values
-    hitIDs_cdch = hits_cdch['hit_id'].values
-    hitIDs_SPX = hits_spx['hit_id'].values
-    
+    # Store old ID
     hits_cdch_placeholder = hits_cdch.copy()
+    old_hits_id = hits_cdch_placeholder['hit_id'].values
+    hits_cdch_placeholder = hits_cdch_placeholder.reset_index(drop=True)
+    hits_cdch_placeholder['hit_id'] = hits_cdch_placeholder.index
+    
+
+
+    hitIDs_cdch = hits_cdch_placeholder['hit_id'].values
+    hitIDs_SPX = hits_spx['hit_id'].values
+ 
     layers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     hits_layers = [hits_cdch_placeholder[hits_cdch_placeholder['wire_id'].floordiv(192) == layer] for layer in layers]
-    
-    #take the last non empty layers to connect to spx.
+    first_non_empty_layer_index = next(index for index,layer in enumerate(hits_layers) if len(layer)!=0)
+    #take beginning from the first non empty layer the next n layers, even if they are empty.
     if hits_layers:
-        last_n_non_empty_cdch_layers = pd.concat(hits_layers[:last_CDCH_layer_to_connect_spx], ignore_index=True)
+        last_n_non_empty_cdch_layers = pd.concat([h for h in hits_layers[first_non_empty_layer_index:first_non_empty_layer_index + last_CDCH_layer_to_connect_spx]],ignore_index=True)
 
     hitIDs_cdch_last = last_n_non_empty_cdch_layers['hit_id'].values
-
     #create all possible couples between cdch layer and spx
     couple_cdchhit_spxhit = []
     for j, hitID_1 in enumerate(hitIDs_cdch_last):
@@ -374,7 +413,9 @@ def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer
     if len(edge_index) > 0:
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
-
+    else:
+        return [],[],[]
+    
     # The truth should be set to nturn and should not be the same for all CDCH and SPX connections
     edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
 
@@ -384,8 +425,8 @@ def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer
         nturns_SPX = 0
         i = int(e[0])
         j = int(e[1])
-        print(f"Connecting hits {i} and {j}.")
-        print()
+        #print(f"Connecting hits {i} and {j}.")
+
         
         if i < len(hitIDs_cdch):
             nturns_CDCH = truth_cdch[i]
@@ -405,11 +446,6 @@ def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer
 
     return edge_index, edge_attr, edge_truth
 
-def mappa_indici():
-    if next_hit_old == -1:
-        next_hit_new = -1
-    else:
-        map(next_hit_old_vec, next_hit_new_vec)[next_hit_old]
 
 def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx, same_layer_cdch_dist_conn):                  
     print("\t\tBuilding the CDCH graphs")
@@ -426,24 +462,31 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
         X_cdch, edge_index_cdch,edge_attr_cdch, edge_truth_cdch = build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn)
         print(f"\t\tNumber of cdch hits in this graph = {len(X_cdch)}")
 
-        #if there are no hits in CDCH
+        #if there are no hits in CDCH, skip sector
         if(len(X_cdch) == 0):
             continue;
 
-        print(f"\t\tCDCH - SPX graph in Sector group {i}")
-        #print(f"\t\t X_cdch = ", X_cdch)
-        #build connection between cdch last layers (to be tuned) and spx.
-        N_hits_CDCH = len(X_cdch)
-        hits_spx_subgraph = hits_spx.copy()
-        hits_spx_subgraph['hit_id'] = hits_spx.index
-        hits_spx_subgraph['hit_id']  += N_hits_CDCH
-        hits_spx_subgraph['next_hit_id'] = mappa_index_old_index_new(N_hits_CDCH
-        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, depth_conn_cdch_spx)
         
-        edge_index_cdch= np.concatenate((edge_index_cdch,edge_index_cdch_spx), axis =1)
-        edge_attr_cdch = np.concatenate((edge_attr_cdch,edge_attr_cdch_spx ))
-        edge_truth_cdch= np.concatenate((edge_truth_cdch, edge_truth_cdch_spx))
+        #build connection between cdch last layers (to be tuned) and spx.
+        
+        N_hits_CDCH = len(X_cdch)
 
+        hits_spx_subgraph = hits_spx.copy()
+
+
+        #shift spx indexes by N_hits_CDCH
+        hits_spx_subgraph['hit_id'] = hits_spx.index+N_hits_CDCH
+
+        
+        
+        #create connections between cdch and spx
+        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, depth_conn_cdch_spx)
+        #if there are no connections between spx and cdch, don't append result
+        if len(edge_index_cdch_spx)!= 0:
+            edge_index_cdch= np.concatenate((edge_index_cdch,edge_index_cdch_spx), axis =1)
+            edge_attr_cdch = np.concatenate((edge_attr_cdch,edge_attr_cdch_spx ))
+            edge_truth_cdch= np.concatenate((edge_truth_cdch, edge_truth_cdch_spx))
+        
         X_sectors_CDCH.append(X_cdch)
         edge_index_sectors_CDCH.append(edge_index_cdch)
         edge_attr_sectors_CDCH.append(edge_attr_cdch)
@@ -465,7 +508,9 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
     
     #add N_hits_CDCH to hitids in spx
     graphs = []
-
+    #
+    hits_spx = hits_spx.reset_index(drop = True)
+    
     #build both spx and cdch connections
     print("\tBuild CDCH and CDCH - SPX graphs...")
     Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_edge_truth_CDCH = build_CDCH_graphs(hits_cdch,
@@ -474,19 +519,29 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
                                                                                                         same_layer_cdch_dist_conn ) 
 
     for i, X_cdch in enumerate(Vec_X_sector_CDCH):
-        print("\tBuild SPX own graph in sector ", i)
+        #print("\tBuild SPX own graph in sector ", i)
         #print("X cdch = ", X_cdch)
         #print("X spx = ", X_spx)
-        N_hits_CDCH = len(X_cdch.index)
+        N_hits_CDCH = len(X_cdch)
         hits_spx_subgraph = hits_spx.copy()
         hits_spx_subgraph['hit_id']  += N_hits_CDCH
         hits_spx_subgraph['next_hit_id'] += N_hits_CDCH
+        
         # Build spx graph for this subgraph
         X_spx, edge_index_spx, edge_attr_spx , edge_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
-        X = np.concatenate((X_cdch, X_spx))
-        edge_index =np.concatenate((Vec_edge_index_CDCH[i],edge_index_spx), axis = 1)
-        edge_attr =np.concatenate((Vec_edge_attr_CDCH[i],edge_attr_spx))
-        edge_truth = np.hstack((Vec_edge_truth_CDCH[i],edge_truth_spx))
+        
+        if(len(X_spx) != 0):
+            X = np.concatenate((X_cdch, X_spx))
+            edge_index =np.concatenate((Vec_edge_index_CDCH[i],edge_index_spx), axis = 1)
+            edge_attr =np.concatenate((Vec_edge_attr_CDCH[i],edge_attr_spx))
+            edge_truth = np.hstack((Vec_edge_truth_CDCH[i],edge_truth_spx))
+        else:
+            X = X_cdch
+            edge_index = Vec_edge_index_CDCH[i]
+            edge_attr = Vec_edge_attr_CDCH[i]
+            edge_truth = Vec_edge_truth_CDCH[i]
+          
+        
         graph = {'X' : X, 'edge_index' : edge_index, 'edge_attr' : edge_attr, 'truth' : edge_truth}
         graphs.append(graph)
 
@@ -513,46 +568,46 @@ def build_dataset(file_ids,
         events = load_data(file_id, input_dir=input_dir)
 
         for ev, event in enumerate(events):
-            
-            mc_truth = event[0]
-            cdch_event = event[1]
-            spx_event = event[2]
+            if(ev >=0):
+                mc_truth = event[0]
+                cdch_event = event[1]
+                spx_event = event[2]
 
-            # Features are:
-            # 1) cdch event, those are cdch hits
-            # 2) spx event, those are spx hits
-            # 3) depth_conn_cdch, this is to be tuned: sets how far from a layer connection are made to another layer.
-            # 4) same_layer_cdch_dist_conn, this is to be tuned, set how far apart a connection is made ebtween wire of the same layer
-            # 5) depth_conn_cdch_spx, this is to be tuned: sets how deep in the cdch connection are made with spx hits: ex 1 means only closest layer.
-            print("Starting to create graph for event ", ev)
-            
-            graphs = build_event_graphs(cdch_event, spx_event, 3, 3, 2)
+                # Features are:
+                # 1) cdch event, those are cdch hits
+                # 2) spx event, those are spx hits
+                # 3) depth_conn_cdch, this is to be tuned: sets the depth of connections between cdch layers in terms of cdch layers.  
+                # 4) same_layer_cdch_dist_conn, this is to be tuned, set how far apart a connection is made ebtween wire of the same layer
+                # 5) depth_conn_cdch_spx, this is to be tuned: sets how deep in the cdch connection are made with spx hits: ex 1 means only closest layer.
+                print("Starting to create graph for event ", ev)
+                
+                graphs = build_event_graphs(cdch_event, spx_event, 4, 3, 2)
+    
+                # Loop over sections in an event
+                for sec, graph in enumerate(graphs):
+    
+                    output_filename = os.path.join(output_dir, f"{output_dir}/file{file_id}_event{ev}_sectors{sec}.npz")
+    
+                    # Save existing file only if recreate is true, skip first column since it is hit ID
+                    if recreate:
+                        np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
+                    else:
+                        if not os.path.isfile(output_filename):
+                            np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
+    
+                    if plot_it:
+                        """
+                        Plot a graph
+                        """
+                        from utils.plot_graph import plot
+    
+                        plot(graph['X'], graph['edge_index'], graph['truth'])
+    
+            if time_it:
+                t_stop = time.time()
+                print(f"{(t_stop - t_start) / len(events) :.3f} s per event to build {len(events)} events.")
 
-            # Loop over sections in an event
-            for sec, graph in enumerate(graphs):
-
-                output_filename = os.path.join(output_dir, f"{output_dir}/file{file_id}_event{ev}_sectors{sec}.npz")
-
-                # Save existing file only if recreate is true, skip first column since it is hit ID
-                if recreate:
-                    np.savez(output_filename, X=graph['X'][1:], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
-                else:
-                    if not os.path.isfile(output_filename):
-                        np.savez(output_filename, X=graph['X'][1:], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
-
-                if plot_it:
-                    """
-                    Plot a graph
-                    """
-                    from utils.plot_graph import plot
-
-                    plot(graph['X'], graph['edge_index'], graph['truth'])
-
-        if time_it:
-            t_stop = time.time()
-            print(f"{(t_stop - t_start) / len(events) :.3f} s per event to build {len(events)} events.")
-
-    print(f"Dataset *.npz files created in {output_dir}")
+        print(f"Dataset *.npz files created in {output_dir}")
 
 
 if __name__ == "__main__" :
@@ -561,5 +616,5 @@ if __name__ == "__main__" :
     TIME = True
     RECREATE = True
     file_ids = [f'0{int(idx)}' for idx in range(1002, 1003, 1)]
-
-    build_dataset(file_ids, input_dir='../dataset', output_dir="../dataset", time_it=TIME, plot_it=PLOT, recreate=RECREATE)
+    #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
+    build_dataset(file_ids, input_dir='.', output_dir=".", time_it=TIME, plot_it=PLOT, recreate=RECREATE)

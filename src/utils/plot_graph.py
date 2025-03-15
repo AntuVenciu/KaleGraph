@@ -5,8 +5,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.cm import tab10
 from utils.tools import load_graph_npz
-from matplotlib.collections import LineCollection
 
+import pandas as pd
 
 # Functions to draw CDCH planes and sectors
 
@@ -76,19 +76,19 @@ def plot(hits, edge_matrix, y):
 
     colors = ["pink", "blue"] # colors for CDCH and TC nodes
     fmts = ["o", "s"] # fmts for CDCH and TC nodes
-    signal_color = ['grey','blue', 'orange', 'red', 'purple', 'green', 'brown', 'magenta', 'cyan', 'yellow', 'black'] # colors for different turns
+    signal_color = ['blue', 'orange', 'red', 'purple', 'green', 'brown', 'magenta', 'cyan', 'yellow', 'black'] # colors for different turns
 
     # Plot nodes and edges
     # Watch out: if you load from a npz file, you can access only the normalized x and y coordinates..
     # This is not the case now, so let's keep going
     # Dropping hits_id, we can just use the radius sqrt(x0^2 + y0^2) to assert if it is cdch or spx
-    mask_cdch = np.sqrt(hits[:, 0]**2 + hits[:, 1]**2) < 29
-    mask_spx = np.sqrt(hits[:, 0]**2 + hits[:, 1]**2) > 29
-
+    
+    mask_spx = hits[:,5].astype(bool)
+    mask_cdch = ~mask_spx
     # plot CDCH hits
-    plt.errorbar(hits[mask_cdch][0], hits[mask_cdch][1], fmt = fmts[0], markersize = 10, color = colors[0])
+    plt.errorbar(hits[mask_cdch][:,0], hits[mask_cdch][:,1], fmt = fmts[0], markersize = 10, color = colors[0])
     # plot SPX hits
-    plt.errorbar(hits[mask_spx][0], hits[mask_spx][1], fmt = fmts[1], markersize = 10, color = colors[1]) 
+    plt.errorbar(hits[mask_spx][:,0], hits[mask_spx][:,1], fmt = fmts[1], markersize = 10, color = colors[1]) 
 
     # Code to identify hits ID. More useful for debugging if we had the MC idx maybe.
     # Commenting it for the moment
@@ -99,7 +99,10 @@ def plot(hits, edge_matrix, y):
         plt.text(hits[1].loc[mask2].to_numpy()[i], hits[2].loc[mask2].to_numpy()[i] + 0.5, str(int(hits[0].loc[mask2].to_numpy()[i])), fontsize=8, ha='center', color='black', fontweight='bold')     
     #draw edges.
     """
-
+    np.set_printoptions(threshold=np.inf)
+    print(f"We have a total of {np.shape(hits)} hits")
+    print(edge_matrix)
+    print(pd.DataFrame(hits))
     # Plot nodes and edges
     # Watch out: if you load from a npz file, you can access only the normalized x and y coordinates...
     x_min = 1000
@@ -134,9 +137,9 @@ def plot(hits, edge_matrix, y):
         y_min = min(y_min, min(yi, yj))
         
         #hittype_i, xi, yi = calculate_coordinates(i, pixel_geo)
-        plt.errorbar(xi, yi, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=colors[hittype_i])
+        #plt.errorbar(xi, yi, fmt=fmts[hittype_i], alpha=.6, markersize=10, color=colors[hittype_i])
         #hittype_j, xj, yj = calculate_coordinates(j, pixel_geo)
-        plt.errorbar(xj, yj, fmt=fmts[hittype_j], alpha=.5, markersize=10, color=colors[hittype_j])
+        #plt.errorbar(xj, yj, fmt=fmts[hittype_j], alpha=.5, markersize=10, color=colors[hittype_j])
         if y[k] > 0:
             plt.plot([xi, xj], [yi, yj], color=signal_color[int(y[k]) - 1], linewidth=2, linestyle='-', alpha=1)
         else:
@@ -146,8 +149,8 @@ def plot(hits, edge_matrix, y):
     
     plt.axis('off')
     plt.axis('equal')
-    plt.xlim(min(min(x_first_node)-1, min(x_second_node)), max(max(x_first_node), max(x_second_node))+1)
-    plt.ylim(min(min(y_first_node)-1, min(y_second_node)), max(max(y_first_node), max(y_second_node))+1)
+    plt.xlim(x_min, x_max)
+    plt.ylim(y_min, y_max)
     plt.title('Graph Nodes and Edges')
     plt.show()
 
@@ -165,6 +168,7 @@ if __name__ == "__main__":
     Test plotting a graph from npz files
     """
     filename = "/home/antu/KaleGraph/graph_files_val_1e6/event1005_sectors1.npz"
+    filename = "file01002_event0_sectors0.npz"
     graph = load_graph_npz(filename)
     print(graph['X'].shape)
     print(graph['edge_index'].shape)
