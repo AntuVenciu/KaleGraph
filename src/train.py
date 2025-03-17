@@ -5,7 +5,7 @@ import argparse
 import glob
 import os
 from time import time
-
+import seaborn as sns
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -21,18 +21,25 @@ from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset
 from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
+from sklearn.preprocessing import StandardScaler
 
-max_n_turns = 10
 
-def train(args, model, device, train_loader, optimizer, epoch):
+
+#We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
+# WARNING: THIS NUMBER HAS TO BE EQUAL TO INTERACTION_NETWORK.PY
+max_n_turns = 6
+
+def train(args, model, device, train_loader, optimizer, epoch, scaler):
     model.train()
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
         #t0 = time()
         data = data.to(device)
-        output = model(data.x, data.edge_index, data.edge_attr)
-
+        #output = model(data.x, data.edge_index, data.edge_attr)
+        output = model(torch.tensor(scaler.fit_transform(data.x)),data.edge_index,torch.tensor(scaler.fit_transform(data.edge_attr)))
+                       
+                       
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
         # Have some problems here
         if max(y.numpy()) > max_n_turns:
@@ -52,6 +59,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
         loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
         
         loss = loss_fn(output, y)
+        #print(y)
+        #print(output)
         loss.backward()
 
         optimizer.step()
@@ -69,7 +78,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     print("...epoch {}: train loss={}".format(epoch, losses))
     return losses
 
-def validate(model, device, val_loader):
+def validate(model, device, val_loader, scaler):
     model.eval()
     losses = []
     y_pred_val = torch.empty(0, dtype=torch.long)
@@ -78,10 +87,12 @@ def validate(model, device, val_loader):
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
             data = data.to(device)
-            output = model(data.x, data.edge_index, data.edge_attr)
+            #output = model(data.x, data.edge_index, data.edge_attr)
+            output = model(torch.tensor(scaler.fit_transform(data.x)),data.edge_index,torch.tensor(scaler.fit_transform(data.edge_attr)))
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
             #perform one hot encoding trasformation.    
             y = y.to(torch.long)
+            
             # Have some problems here
             if max(y.numpy()) > max_n_turns:
                 continue
@@ -91,20 +102,36 @@ def validate(model, device, val_loader):
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
             yn = y_one_hot_encoding.numpy()
+            
+            
+            #print(torch.argmax(output, dim = 1))
+            #print(torch.argmax(y_one_hot_encoding, dim = 1))
             # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
             loss = loss_fn(output, y)
             losses.append(loss.item())
             #let's build a confusion matrix for all turns.
-            torch.cat((y_pred_val, torch.argmax(output, dim = 1)))
-            torch.cat((y_true_val, torch.argmax(y_one_hot_encoding, dim = 1)))
+
+
+            # we keep calculating those for all epochs since we need to keep account of accuracy throughout the training. At the moment we only see the last step to see if it converges to ill minimum.
+            y_pred_val = torch.argmax(output, dim = 1)
+            y_true_val = torch.argmax(y_one_hot_encoding, dim = 1)
+
+            
+
     print('... val loss: {:.4f}\n'
           .format(np.mean(losses)))
-    Confusion_mat = confusion_matrix(y_pred_val.numpy(), y_true_val.numpy())
+    #print(y_pred_val)
+    y_pred_val_np = y_pred_val.numpy()
+    y_true_val_np = y_true_val.numpy()
+    
+    Confusion_mat = confusion_matrix(y_pred_val_np, y_true_val_np)      
+          
+
     return  Confusion_mat, losses 
 
-def test(model, device, test_loader, thld=0.5):
+def test(model, device, test_loader, scaler, thld=0.5):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
@@ -113,13 +140,13 @@ def test(model, device, test_loader, thld=0.5):
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
             data = data.to(device)
-            output = model(data.x, data.edge_index, data.edge_attr)
+            #output = model(data.x, data.edge_index, data.edge_attr)
+            output = model(torch.tensor(scaler.fit_transform(data.x)),data.edge_index,torch.tensor(scaler.fit_transform(data.edge_attr)))
 
-            #let's build a confusion matrix for all turns.
-            torch.cat((y_pred_test, torch.argmax(output, dim = 1)))
-            torch.cat((y_true_test, data.y))
+            
+
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
-
+            
             #perform one hot encoding trasformation.
             y = y.to(torch.long)
             # Have some problems here
@@ -127,12 +154,21 @@ def test(model, device, test_loader, thld=0.5):
                 continue
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
+            
+            #let's build a confusion matrix for all turns.
+            # we keep calculating those for all epochs since we need to keep account of accuracy throughout the training. At the moment we only see the last step to see if it converges to ill minimum.
+            y_pred_test = torch.argmax(output, dim = 1)
+            y_true_test = torch.argmax(y_one_hot_encoding, dim = 1)
+            
+            
+            
             yn = y_one_hot_encoding.numpy()
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
             loss = loss_fn(output, y)
             losses.append(loss.item())
-            #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
+
+
 
     print('... test loss: {:.4f}\n'
           .format(np.mean(losses)))
@@ -218,15 +254,18 @@ def main():
     scheduler = StepLR(optimizer, step_size=args.step_size,
                        gamma=args.gamma)
 
-
+    scaler = StandardScaler() 
     output = {'train_loss': [], 'val_loss' : [], 'val_tpr' : [], 'val_tpr' : [], 'test_loss': [], 'test_acc': []}
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
-        train_loss = train(args, model, device, train_loader, optimizer, epoch)
-        Val_confusion_mat, val_loss= validate(model, device, val_loader)
+
+        train_loss = train(args, model, device, train_loader, optimizer, epoch, scaler)
+        Val_confusion_mat, val_loss= validate(model, device, val_loader,scaler)
+
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader, thld = 0.5)
+        Test_confusion_mat, test_loss = test(model, device, test_loader,scaler, thld = 0.5)
         scheduler.step()
+
         """
         if args.save_model:
             torch.save(model.state_dict(),
@@ -262,6 +301,20 @@ def main():
     plt.legend()
     plt.show()
     
+    
+    labels = ['Rumore', 'Giro 1', 'Giro 2', 'Giro 3', 'Giro 4', 'Giro 5', 'Giro 6']
+    # Visualizza la matrice di confusione con un heatmap
+    sns.heatmap(Val_confusion_mat, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.show()
+    
+    sns.heatmap(Test_confusion_mat, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels) 
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
+    plt.title('Confusion Matrix')
+    plt.show()
 
 if __name__ == '__main__':
     torch.set_num_threads(1)
