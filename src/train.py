@@ -20,18 +20,23 @@ from torch.profiler import profile, record_function, ProfilerActivity
 from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset
 from build_graph_segmented import build_dataset
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 
 max_n_turns = 5
 
-def train(args, model, device, train_loader, optimizer, epoch):
+def train(args, model, device, train_loader, optimizer, epoch, scaler):
+
     model.train()
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
         #t0 = time()
         data = data.to(device)
-        output = model(data.x, data.edge_index, data.edge_attr)
+        # Evaluate model and scale entries
+        output = model(scaler.fit_transform(data.x),
+                       data.edge_index,
+                       scaler.fit_transform(data.edge_attr))
 
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
         # Have some problems here
@@ -67,7 +72,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     print("...epoch {}: train loss={}".format(epoch, np.mean(losses)))
     return losses
 
-def validate(model, device, val_loader):
+def validate(model, device, val_loader, scaler):
     model.eval()
     losses = []
     y_pred_val = torch.empty(0, dtype=torch.long)
@@ -76,7 +81,10 @@ def validate(model, device, val_loader):
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
             data = data.to(device)
-            output = model(data.x, data.edge_index, data.edge_attr)
+            # Evaluate model and scale
+            output = model(scaler.transform(data.x),
+                           data.edge_index,
+                           scaler.transform(data.edge_attr))
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
             #perform one hot encoding trasformation.    
             y = y.to(torch.int)
@@ -101,7 +109,7 @@ def validate(model, device, val_loader):
     Confusion_mat = confusion_matrix(y_pred_val.to_numpy(), y_true_val.to_numpy())
     return  Confusion_mat, np.mean(losses) 
 
-def test(model, device, test_loader, thld=0.5):
+def test(model, device, test_loader, thld=0.5, scaler):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
@@ -110,7 +118,10 @@ def test(model, device, test_loader, thld=0.5):
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
             data = data.to(device)
-            output = model(data.x, data.edge_index, data.edge_attr)
+            # Evaluate model and scale
+            output = model(scaler.transform(data.x),
+                           data.edge_index,
+                           scaler.transform(data.edge_attr))
 
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_test, torch.argmax(output, dim = 1)))
@@ -189,7 +200,7 @@ def main():
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
     params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
-    
+
     train_set = GraphDataset(partition['train'])
     train_set.plot(8)
     train_loader = DataLoader(train_set, **params)
@@ -214,33 +225,23 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=args.step_size,
                        gamma=args.gamma)
-
+    # scaler for Normal distributed dataset
+    scaler = StandardScaler() 
 
     output = {'train_loss': [], 'val_loss' : [], 'val_tpr' : [], 'val_tpr' : [], 'test_loss': [], 'test_acc': []}
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
-        train_loss = train(args, model, device, train_loader, optimizer, epoch)
-        Val_confusion_mat, val_loss= validate(model, device, val_loader)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch, scaler)
+        Val_confusion_mat, val_loss= validate(model, device, val_loader, scaler)
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader, thld=thld)
+        Test_confusion_mat, test_loss = test(model, device, test_loader, thld=thld, scaler)
         scheduler.step()
-        """
-        if args.save_model:
-            torch.save(model.state_dict(),
-                       "trained_models/train{}_PyG_{}_epoch{}_{}GeV_redo.pt"
-                       .format(args.sample, args.construction, epoch, args.pt))
-        """
+        
         output['train_loss'] += train_loss
         output['val_loss'] += val_loss
         #output['val_tpr'] += val_tpr
         output['test_loss'] += test_loss
         #output['test_acc'] += test_acc
-        
-        """
-        np.save('train_output/train{}_PyG_{}_{}GeV_redo'
-                .format(args.sample, args.construction, args.pt),
-                output)
-        """
 
     # Plotting of history
     
