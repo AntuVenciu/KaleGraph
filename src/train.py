@@ -20,27 +20,23 @@ from torch.profiler import profile, record_function, ProfilerActivity
 from models.interaction_network import InteractionNetwork
 from utils.dataset import GraphDataset
 from build_graph_segmented import build_dataset
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import confusion_matrix
 
-max_n_turns = 5
+max_n_turns = 10
 
-def train(args, model, device, train_loader, optimizer, epoch, scaler):
-
+def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
+        print(batch_idx)
         #t0 = time()
         data = data.to(device)
-        # Evaluate model and scale entries
-        output = model(data.x,
-                       data.edge_index,
-                       data.edge_attr)
+        output = model(data.x, data.edge_index, data.edge_attr)
 
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
         # Have some problems here
-        if max(y.numpy()) > 5:
+        if max(y.numpy()) > max_n_turns:
             continue
         #convert to one hot encoding.
         y = y.to(torch.int)
@@ -55,10 +51,15 @@ def train(args, model, device, train_loader, optimizer, epoch, scaler):
         class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
          
         loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+        print(y)
+        print(output)
         loss = loss_fn(output, y_one_hot_encoding)
         loss.backward()
+        losses.append(loss.item())
         optimizer.step()
         optimizer.zero_grad()
+        #print(losses)
+        #print(loss.item())
         #t1 = time()
         #print(f"time for the whole batch = {t1 - t0:.3f} s")
         if batch_idx % args.log_interval == 0:
@@ -67,12 +68,13 @@ def train(args, model, device, train_loader, optimizer, epoch, scaler):
                 100. * batch_idx / len(train_loader), loss.item()))
             if args.dry_run:
                 break
-        losses.append(loss.item())
+        #losses.append(loss.item())
+        
     print("...epoch time: {0}s".format(time()-epoch_t0))
-    print("...epoch {}: train loss={}".format(epoch, np.mean(losses)))
+    print("...epoch {}: train loss={}".format(epoch, losses))
     return losses
 
-def validate(model, device, val_loader, scaler):
+def validate(model, device, val_loader):
     model.eval()
     losses = []
     y_pred_val = torch.empty(0, dtype=torch.long)
@@ -81,10 +83,7 @@ def validate(model, device, val_loader, scaler):
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
             data = data.to(device)
-            # Evaluate model and scale
-            output = model(scaler.transform(data.x),
-                           data.edge_index,
-                           scaler.transform(data.edge_attr))
+            output = model(data.x, data.edge_index, data.edge_attr)
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
             #perform one hot encoding trasformation.    
             y = y.to(torch.int)
@@ -101,15 +100,15 @@ def validate(model, device, val_loader, scaler):
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
             loss = loss_fn(output, y_one_hot_encoding)
-            losses.append(loss)
+            losses.append(loss.item())
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_val, torch.argmax(output, dim = 1)))
             torch.cat((y_true_val, torch.argmax(y_one_hot_encoding, dim = 1)))
             
-    Confusion_mat = confusion_matrix(y_pred_val.to_numpy(), y_true_val.to_numpy())
-    return  Confusion_mat, np.mean(losses) 
+    Confusion_mat = confusion_matrix(y_pred_val.numpy(), y_true_val.numpy())
+    return  Confusion_mat, losses 
 
-def test(model, device, test_loader, scaler, thld=0.5):
+def test(model, device, test_loader, thld=0.5):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
@@ -118,10 +117,7 @@ def test(model, device, test_loader, scaler, thld=0.5):
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
             data = data.to(device)
-            # Evaluate model and scale
-            output = model(scaler.transform(data.x),
-                           data.edge_index,
-                           scaler.transform(data.edge_attr))
+            output = model(data.x, data.edge_index, data.edge_attr)
 
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_test, torch.argmax(output, dim = 1)))
@@ -139,13 +135,13 @@ def test(model, device, test_loader, scaler, thld=0.5):
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
             loss = loss_fn(output, y_one_hot_encoding)
-            losses.append(loss)
+            losses.append(loss.item())
             #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
 
     print('... test loss: {:.4f}\n'
           .format(np.mean(losses)))
-    Confusion_mat = confusion_matrix(y_pred_test.to_numpy(), y_true_test.to_numpy())
-    return Confusion_mat, np.mean(losses) #np.mean(losses), np.mean(accs)
+    Confusion_mat = confusion_matrix(y_pred_test.numpy(), y_true_test.numpy())
+    return Confusion_mat, losses #np.mean(losses), np.mean(accs)
 
 def main():
 
@@ -157,7 +153,7 @@ def main():
                         help='input batch size for testing (default: 1000)')
     parser.add_argument('--epochs', type=int, default=10, metavar='N',
                         help='number of epochs to train (default: 10)')
-    parser.add_argument('--lr', type=float, default=0.001, metavar='LR',
+    parser.add_argument('--lr', type=float, default=0.003, metavar='LR',
                         help='learning rate (default: 0.001)')
     parser.add_argument('--gamma', type=float, default=0.1, metavar='M',
                         help='Learning rate step gamma (default: 0.1)')
@@ -171,7 +167,7 @@ def main():
                         help='how many batches to wait before logging training status')
     parser.add_argument('--save-model', action='store_true', default=False,
                         help='For Saving the current Model')
-    parser.add_argument('--hidden-size', type=int, default=50,
+    parser.add_argument('--hidden-size', type=int, default=100,
                         help='Number of hidden units per layer')
 
     args = parser.parse_args()
@@ -183,14 +179,15 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    inputdir = "MCData/"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
-    if len(graph_files) < 1000:
+    
+    if len(graph_files) < 15:
         print("Dataset not loaded correctly") 
         return
-
+    
     # Split the dataset
     f_train = 0.75
     f_test = 0.15
@@ -200,9 +197,9 @@ def main():
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
     params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
-
+    
     train_set = GraphDataset(partition['train'])
-    #train_set.plot(0)
+    train_set.plot(10)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)
@@ -225,23 +222,33 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = StepLR(optimizer, step_size=args.step_size,
                        gamma=args.gamma)
-    # scaler for Normal distributed dataset
-    scaler = StandardScaler() 
+
 
     output = {'train_loss': [], 'val_loss' : [], 'val_tpr' : [], 'val_tpr' : [], 'test_loss': [], 'test_acc': []}
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
-        train_loss = train(args, model, device, train_loader, optimizer, epoch, scaler)
-        Val_confusion_mat, val_loss= validate(model, device, val_loader, scaler)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch)
+        Val_confusion_mat, val_loss= validate(model, device, val_loader)
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader, scaler, thld=thld)
+        Test_confusion_mat, test_loss = test(model, device, test_loader, thld = 0.5)
         scheduler.step()
-        
+        """
+        if args.save_model:
+            torch.save(model.state_dict(),
+                       "trained_models/train{}_PyG_{}_epoch{}_{}GeV_redo.pt"
+                       .format(args.sample, args.construction, epoch, args.pt))
+        """
         output['train_loss'] += train_loss
         output['val_loss'] += val_loss
         #output['val_tpr'] += val_tpr
         output['test_loss'] += test_loss
         #output['test_acc'] += test_acc
+        
+        """
+        np.save('train_output/train{}_PyG_{}_{}GeV_redo'
+                .format(args.sample, args.construction, args.pt),
+                output)
+        """
 
     # Plotting of history
     
