@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 
+
 def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"):
     """
     Load data for the events within sim file with id file_id
@@ -88,9 +89,10 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
     return hits[filter_condition]
 
 
-
+#[0,1,2,3,4,5,6,7,8,9,10,11],
 def split_cdch_sectors(cdch_hits,
-                       list_cdch_sectors=[[11, 0, 1],
+                       list_cdch_sectors=[
+                                          [11, 0, 1],
                                           [1, 2, 3],
                                           [3, 4, 5],
                                           [5, 6, 7]
@@ -216,8 +218,12 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     truth_hits = SPX_hits['truth'].values
     nexthit_id = SPX_hits['next_hit_id'].values
 
+
     couple_pixels = []
 
+    
+    
+    
     map_idx = dict(zip(SPX_hits['hit_id'].values, SPX_hits.index))
     
     #Put this defaultdict: this is to avoid crash as the last hit which has nexthit = -1, also for noise
@@ -227,12 +233,16 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     SPX_hits['hit_id'] = SPX_hits.index + index_start_at
     #save hits info
     X = SPX_hits[feature_names].values.astype(np.float32)
+        
+
     
     #revert back to perform connections with map 
     SPX_hits['hit_id'] = SPX_hits.index 
     if(X.size == 0 or X.shape[1] == 0):
         return -1
     hitIDs = SPX_hits['hit_id']  
+
+
 
     #now we have to create all possible connections (we have few hits in the SPX hits)
     for j, hitID_1 in enumerate(hitIDs):
@@ -263,7 +273,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
     else:
-        return [],[],[],[]
+        return X, np.empty((2,0)),np.empty((0,3)),np.array([])
     # Evaluate edges truth label
     edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
     
@@ -447,8 +457,9 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
         #print(f"\t\tNumber of cdch hits in this graph = {len(X_cdch)}")
 
         #if there are no hits in CDCH, skip sector
-        if(len(X_cdch) == 0):
+        if(len(edge_index_cdch) == 0):
             continue;
+
 
         #build connection between cdch last layers (to be tuned) and spx.
         
@@ -456,11 +467,15 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
 
         hits_spx_subgraph = hits_spx.copy()
 
+
         #shift spx indexes by N_hits_CDCH
         hits_spx_subgraph['hit_id'] = hits_spx.index+N_hits_CDCH
+
+        
         
         #create connections between cdch and spx
         edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, depth_conn_cdch_spx)
+
         #if there are no connections between spx and cdch, don't append result
         if len(edge_index_cdch_spx)!= 0:
             edge_index_cdch= np.concatenate((edge_index_cdch,edge_index_cdch_spx), axis =1)
@@ -499,9 +514,7 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
                                                                                                         same_layer_cdch_dist_conn ) 
 
     for i, X_cdch in enumerate(Vec_X_sector_CDCH):
-        #print("\tBuild SPX own graph in sector ", i)
-        #print(f"Nodes cdch = {len(X_cdch)}. Edges CDCH = {len(Vec_edge_attr_CDCH[i])}.")
-
+        
         N_hits_CDCH = len(X_cdch)
         hits_spx_subgraph = hits_spx.copy()
         hits_spx_subgraph['hit_id']  += N_hits_CDCH
@@ -509,8 +522,6 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
         
         # Build spx graph for this subgraph
         X_spx, edge_index_spx, edge_attr_spx , edge_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
-        #print(f"Nodes spx = {len(X_spx)}. Edges SPX = {len(edge_attr_spx)}.")
-        
         if(len(X_spx) != 0):
             X = np.concatenate((X_cdch, X_spx))
             edge_index =np.concatenate((Vec_edge_index_CDCH[i],edge_index_spx), axis = 1)
@@ -549,6 +560,8 @@ def build_dataset(file_ids,
 
         for ev, event in enumerate(events):
             if(ev >=0):
+                if(ev > 72):
+                    break;
                 mc_truth = event[0]
                 cdch_event = event[1]
                 spx_event = event[2]
@@ -591,10 +604,10 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = False
+    PLOT = True
     TIME = True
-    input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
-    output_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    input_dir = "."
+    output_dir = "."
     file_ids = [f'0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]

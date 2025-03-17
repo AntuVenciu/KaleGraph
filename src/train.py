@@ -88,7 +88,7 @@ def validate(model, device, val_loader):
             #perform one hot encoding trasformation.    
             y = y.to(torch.int)
             # Have some problems here
-            if max(y.numpy()) > 5:
+            if max(y.numpy()) > max_n_turns:
                 continue
             #if there are no edges.
             if y.numpy().sum() == 0:
@@ -104,7 +104,8 @@ def validate(model, device, val_loader):
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_val, torch.argmax(output, dim = 1)))
             torch.cat((y_true_val, torch.argmax(y_one_hot_encoding, dim = 1)))
-            
+    print('... val loss: {:.4f}\n'
+          .format(np.mean(losses)))
     Confusion_mat = confusion_matrix(y_pred_val.numpy(), y_true_val.numpy())
     return  Confusion_mat, losses 
 
@@ -127,7 +128,7 @@ def test(model, device, test_loader, thld=0.5):
             #perform one hot encoding trasformation.
             y = y.to(torch.int)
             # Have some problems here
-            if max(y.numpy()) > 5:
+            if max(y.numpy()) > max_n_turns:
                 continue
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
@@ -179,7 +180,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "MCData/"
+    inputdir = "."
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
