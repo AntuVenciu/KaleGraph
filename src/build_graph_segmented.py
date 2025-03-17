@@ -96,7 +96,7 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
 
 
 def split_cdch_sectors(cdch_hits,
-                       list_cdch_sectors=[
+                       list_cdch_sectors=[[11, 0, 1],
                                           [1, 2, 3],
                                           [3, 4, 5],
                                           [5, 6, 7]
@@ -209,7 +209,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     #feature_names = ['x0', 'y0', 'z0', 'time', 'ampl']
     # WARNING! Number of features of CDCH and SPX hit must be the same
 
-    print("Building SPX Graph")
+    #print("Building SPX Graph")
     feature_names = ['x0', 'y0', 'z0', 'time', 'ampl', 'isSPX']
     # Add a place holder for ampl. Set to 1. This is not a problem for SPX hits,
     # which have low noise compared to CDCH.
@@ -222,12 +222,8 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     truth_hits = SPX_hits['truth'].values
     nexthit_id = SPX_hits['next_hit_id'].values
 
-
     couple_pixels = []
 
-    
-    
-    
     map_idx = dict(zip(SPX_hits['hit_id'].values, SPX_hits.index))
     
     #Put this defaultdict: this is to avoid crash as the last hit which has nexthit = -1, also for noise
@@ -237,16 +233,12 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     SPX_hits['hit_id'] = SPX_hits.index + index_start_at
     #save hits info
     X = SPX_hits[feature_names].values.astype(np.float32)
-        
-    print(len(X))
     
     #revert back to perform connections with map 
     SPX_hits['hit_id'] = SPX_hits.index 
     if(X.size == 0 or X.shape[1] == 0):
         return -1
     hitIDs = SPX_hits['hit_id']  
-
-
 
     #now we have to create all possible connections (we have few hits in the SPX hits)
     for j, hitID_1 in enumerate(hitIDs):
@@ -280,9 +272,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
         return [],[],[],[]
     # Evaluate edges truth label
     edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
-    print(edge_index)
-    print(nexthit_id)
-    print(map_idx)
+    
     for k, e in enumerate(edge_index.T):
             hit_i = int(e[0])
             hit_j = int(e[1])
@@ -322,7 +312,7 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
         return [],[],[],[]
         
     
-    print(f"\t\t\tNumber of hits in this CDCH subgraph ", X.shape[0])
+    #print(f"\t\t\tNumber of hits in this CDCH subgraph ", X.shape[0])
 
     map_abs_idx_sector_idx = dict(zip(sector_hits_placeholder['hit_id'].values, sector_hits_placeholder.index))
     
@@ -448,7 +438,7 @@ def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer
 
 
 def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx, same_layer_cdch_dist_conn):                  
-    print("\t\tBuilding the CDCH graphs")
+    #print("\t\tBuilding the CDCH graphs")
     hits_sectors = split_cdch_sectors(hits_cdch)   
     X_sectors_CDCH = []
     edge_index_sectors_CDCH = []
@@ -457,27 +447,23 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
 
     # Loop over sectors and create single graphs
     for i,sector_hits in enumerate(hits_sectors):
-        print(f"\t\tCDCH graph in Sector group {i}")
+        #print(f"\t\tCDCH graph in Sector group {i}")
         #build connections inside the cdch
         X_cdch, edge_index_cdch,edge_attr_cdch, edge_truth_cdch = build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn)
-        print(f"\t\tNumber of cdch hits in this graph = {len(X_cdch)}")
+        #print(f"\t\tNumber of cdch hits in this graph = {len(X_cdch)}")
 
         #if there are no hits in CDCH, skip sector
         if(len(X_cdch) == 0):
             continue;
 
-        
         #build connection between cdch last layers (to be tuned) and spx.
         
         N_hits_CDCH = len(X_cdch)
 
         hits_spx_subgraph = hits_spx.copy()
 
-
         #shift spx indexes by N_hits_CDCH
         hits_spx_subgraph['hit_id'] = hits_spx.index+N_hits_CDCH
-
-        
         
         #create connections between cdch and spx
         edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, depth_conn_cdch_spx)
@@ -512,7 +498,7 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
     hits_spx = hits_spx.reset_index(drop = True)
     
     #build both spx and cdch connections
-    print("\tBuild CDCH and CDCH - SPX graphs...")
+    #print("\tBuild CDCH and CDCH - SPX graphs...")
     Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_edge_truth_CDCH = build_CDCH_graphs(hits_cdch,
                                                                                                         hits_spx,tune_cdch_connection_depth,
                                                                                                         tune_cdch_and_spx_last_layers_connection_depth,
@@ -579,7 +565,7 @@ def build_dataset(file_ids,
                 # 3) depth_conn_cdch, this is to be tuned: sets the depth of connections between cdch layers in terms of cdch layers.  
                 # 4) same_layer_cdch_dist_conn, this is to be tuned, set how far apart a connection is made ebtween wire of the same layer
                 # 5) depth_conn_cdch_spx, this is to be tuned: sets how deep in the cdch connection are made with spx hits: ex 1 means only closest layer.
-                print("Starting to create graph for event ", ev)
+                #print("Starting to create graph for event ", ev)
                 
                 graphs = build_event_graphs(cdch_event, spx_event, 4, 3, 2)
     
