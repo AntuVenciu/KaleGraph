@@ -29,7 +29,6 @@ def train(args, model, device, train_loader, optimizer, epoch):
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
-        print(batch_idx)
         #t0 = time()
         data = data.to(device)
         output = model(data.x, data.edge_index, data.edge_attr)
@@ -39,7 +38,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         if max(y.numpy()) > max_n_turns:
             continue
         #convert to one hot encoding.
-        y = y.to(torch.int)
+        y = y.to(torch.long)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
         y_one_hot_encoding[torch.arange(len(y)), y] = 1
         
@@ -51,16 +50,12 @@ def train(args, model, device, train_loader, optimizer, epoch):
         class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
          
         loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-        print(y)
-        print(output)
-        loss = loss_fn(output, y_one_hot_encoding)
+        
+        loss = loss_fn(output, y)
         loss.backward()
-        losses.append(loss.item())
+
         optimizer.step()
         optimizer.zero_grad()
-        #print(losses)
-        #print(loss.item())
-        #t1 = time()
         #print(f"time for the whole batch = {t1 - t0:.3f} s")
         if batch_idx % args.log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -68,7 +63,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 100. * batch_idx / len(train_loader), loss.item()))
             if args.dry_run:
                 break
-        #losses.append(loss.item())
+        losses.append(loss.item())
         
     print("...epoch time: {0}s".format(time()-epoch_t0))
     print("...epoch {}: train loss={}".format(epoch, losses))
@@ -86,7 +81,7 @@ def validate(model, device, val_loader):
             output = model(data.x, data.edge_index, data.edge_attr)
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
             #perform one hot encoding trasformation.    
-            y = y.to(torch.int)
+            y = y.to(torch.long)
             # Have some problems here
             if max(y.numpy()) > max_n_turns:
                 continue
@@ -99,7 +94,7 @@ def validate(model, device, val_loader):
             # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-            loss = loss_fn(output, y_one_hot_encoding)
+            loss = loss_fn(output, y)
             losses.append(loss.item())
             #let's build a confusion matrix for all turns.
             torch.cat((y_pred_val, torch.argmax(output, dim = 1)))
@@ -126,7 +121,7 @@ def test(model, device, test_loader, thld=0.5):
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
 
             #perform one hot encoding trasformation.
-            y = y.to(torch.int)
+            y = y.to(torch.long)
             # Have some problems here
             if max(y.numpy()) > max_n_turns:
                 continue
@@ -135,7 +130,7 @@ def test(model, device, test_loader, thld=0.5):
             yn = y_one_hot_encoding.numpy()
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
             loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
-            loss = loss_fn(output, y_one_hot_encoding)
+            loss = loss_fn(output, y)
             losses.append(loss.item())
             #print(f"acc={TP+TN}/{TP+TN+FP+FN}={acc}")
 
@@ -188,7 +183,7 @@ def main():
     if len(graph_files) < 15:
         print("Dataset not loaded correctly") 
         return
-    
+
     # Split the dataset
     f_train = 0.75
     f_test = 0.15
@@ -200,7 +195,7 @@ def main():
     params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
     
     train_set = GraphDataset(partition['train'])
-    train_set.plot(10)
+    train_set.plot(1)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)
@@ -214,7 +209,6 @@ def main():
     # Set to the correct number of features
     NUM_NODE_FEATURES = train_set.get_X_dim()
     NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
-
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=1).to(device)
     model = torch.compile(model)
     total_trainable_params = sum(p.numel() for p in model.parameters())
@@ -250,7 +244,7 @@ def main():
                 .format(args.sample, args.construction, args.pt),
                 output)
         """
-
+    
     # Plotting of history
     
     import matplotlib.pyplot as plt

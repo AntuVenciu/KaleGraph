@@ -35,12 +35,11 @@ class GraphDataset(Dataset):
         try:
             with np.load(self.graph_files[idx]) as graph:
 
-                x = torch.from_numpy(graph['X'])
-                edge_attr = torch.from_numpy(graph['edge_attr'])
-                edge_index = torch.from_numpy(graph['edge_index'])
+                x = torch.from_numpy(graph['X']).to(torch.float64)
+                edge_attr = torch.from_numpy(graph['edge_attr']).to(torch.float64)
+                edge_index = torch.from_numpy(graph['edge_index']).to(torch.int64)
                 # evaluate truth of edges
-                y = torch.from_numpy(graph['truth'])
-
+                y = torch.from_numpy(graph['truth']).to(torch.long)
                 # make graph undirected
                 """
                 row, col = edge_index

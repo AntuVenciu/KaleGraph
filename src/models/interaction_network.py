@@ -12,7 +12,7 @@ from torch_geometric.nn import MessagePassing
 from torch.nn import Sequential as Seq, Linear, ReLU, Sigmoid
 
 
-max_n_turns = 5
+max_n_turns = 10
 
 class RelationalModel(nn.Module):
     def __init__(self, input_size, output_size, hidden_size):

@@ -86,9 +86,9 @@ def plot(hits, edge_matrix, y):
     mask_spx = hits[:,5].astype(bool)
     mask_cdch = ~mask_spx
     # plot CDCH hits
-    #plt.errorbar(hits[mask_cdch][:,0], hits[mask_cdch][:,1], fmt = fmts[0], markersize = 10, color = colors[0])
+    plt.errorbar(hits[mask_cdch][:,0], hits[mask_cdch][:,1], fmt = fmts[0], markersize = 10, color = colors[0])
     # plot SPX hits
-    #plt.errorbar(hits[mask_spx][:,0], hits[mask_spx][:,1], fmt = fmts[1], markersize = 10, color = colors[1]) 
+    plt.errorbar(hits[mask_spx][:,0], hits[mask_spx][:,1], fmt = fmts[1], markersize = 10, color = colors[1]) 
 
     # Code to identify hits ID. More useful for debugging if we had the MC idx maybe.
     # Commenting it for the moment
@@ -141,7 +141,7 @@ def plot(hits, edge_matrix, y):
         #hittype_j, xj, yj = calculate_coordinates(j, pixel_geo)
         #plt.errorbar(xj, yj, fmt=fmts[hittype_j], alpha=.5, markersize=10, color=colors[hittype_j])
         
-        """
+        
         if y[k] > 0:
             plt.plot([xi, xj], [yi, yj], color=signal_color[int(y[k]) - 1], linewidth=2, linestyle='-', alpha=1)
         else:
@@ -155,7 +155,7 @@ def plot(hits, edge_matrix, y):
     plt.ylim(y_min, y_max)
     plt.title('Graph Nodes and Edges')
     plt.show()
-    """
+    
 if __name__ == "__main__":
     """
     Test plot function
