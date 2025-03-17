@@ -34,9 +34,9 @@ def train(args, model, device, train_loader, optimizer, epoch, scaler):
         #t0 = time()
         data = data.to(device)
         # Evaluate model and scale entries
-        output = model(scaler.fit_transform(data.x),
+        output = model(data.x,
                        data.edge_index,
-                       scaler.fit_transform(data.edge_attr))
+                       data.edge_attr)
 
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
         # Have some problems here
@@ -109,7 +109,7 @@ def validate(model, device, val_loader, scaler):
     Confusion_mat = confusion_matrix(y_pred_val.to_numpy(), y_true_val.to_numpy())
     return  Confusion_mat, np.mean(losses) 
 
-def test(model, device, test_loader, thld=0.5, scaler):
+def test(model, device, test_loader, scaler, thld=0.5):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
@@ -183,7 +183,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "../dataset"
+    inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
@@ -202,7 +202,7 @@ def main():
     params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
 
     train_set = GraphDataset(partition['train'])
-    train_set.plot(8)
+    #train_set.plot(0)
     train_loader = DataLoader(train_set, **params)
     test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)
@@ -234,7 +234,7 @@ def main():
         train_loss = train(args, model, device, train_loader, optimizer, epoch, scaler)
         Val_confusion_mat, val_loss= validate(model, device, val_loader, scaler)
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader, thld=thld, scaler)
+        Test_confusion_mat, test_loss = test(model, device, test_loader, scaler, thld=thld)
         scheduler.step()
         
         output['train_loss'] += train_loss
