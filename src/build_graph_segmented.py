@@ -3,18 +3,12 @@ Functions to build event sub-graphs corresponding to
 a set of sectors.
 We make use of a pandas DataFrame to store hit and informations
 """
+from collections import defaultdict
 import os
 import time
 
 import numpy as np
 import pandas as pd
-import torch
-
-
-import numpy as np
-import pandas as pd
-from collections import defaultdict
-
 
 
 def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"):
@@ -506,8 +500,8 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
 
     for i, X_cdch in enumerate(Vec_X_sector_CDCH):
         #print("\tBuild SPX own graph in sector ", i)
-        #print("X cdch = ", X_cdch)
-        #print("X spx = ", X_spx)
+        #print(f"Nodes cdch = {len(X_cdch)}. Edges CDCH = {len(Vec_edge_attr_CDCH[i])}.")
+
         N_hits_CDCH = len(X_cdch)
         hits_spx_subgraph = hits_spx.copy()
         hits_spx_subgraph['hit_id']  += N_hits_CDCH
@@ -515,6 +509,7 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
         
         # Build spx graph for this subgraph
         X_spx, edge_index_spx, edge_attr_spx , edge_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
+        #print(f"Nodes spx = {len(X_spx)}. Edges SPX = {len(edge_attr_spx)}.")
         
         if(len(X_spx) != 0):
             X = np.concatenate((X_cdch, X_spx))
@@ -537,8 +532,7 @@ def build_dataset(file_ids,
                   input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC",
                   output_dir="./",
                   time_it=False,
-                  plot_it=False,
-                  recreate=True):
+                  plot_it=False):
     """
     Build all graphs in file_ids and save them to *.npz files.
     Only for cdch events at the moment.
@@ -559,6 +553,8 @@ def build_dataset(file_ids,
                 cdch_event = event[1]
                 spx_event = event[2]
 
+                #print(f"Building graphs of event {ev}...")
+
                 # Features are:
                 # 1) cdch event, those are cdch hits
                 # 2) spx event, those are spx hits
@@ -574,12 +570,7 @@ def build_dataset(file_ids,
     
                     output_filename = os.path.join(output_dir, f"{output_dir}/file{file_id}_event{ev}_sectors{sec}.npz")
     
-                    # Save existing file only if recreate is true, skip first column since it is hit ID
-                    if recreate:
-                        np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
-                    else:
-                        if not os.path.isfile(output_filename):
-                            np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
+                    np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
     
                     if plot_it:
                         """
@@ -589,18 +580,22 @@ def build_dataset(file_ids,
     
                         plot(graph['X'], graph['edge_index'], graph['truth'])
     
-            if time_it:
-                t_stop = time.time()
-                print(f"{(t_stop - t_start) / len(events) :.3f} s per event to build {len(events)} events.")
+        if time_it:
+            t_stop = time.time()
+            print(f"{(t_stop - t_start) / len(events) :.3f} s per event to build {len(events)} events.")
 
-        print(f"Dataset *.npz files created in {output_dir}")
+    print(f"Dataset *.npz files created in {output_dir}")
 
 
 if __name__ == "__main__" :
 
-    PLOT = True
+    import sys
+
+    PLOT = False
     TIME = True
-    RECREATE = True
-    file_ids = [f'0{int(idx)}' for idx in range(1002, 1003, 1)]
+    input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    output_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    file_ids = [f'0{int(sys.argv[1])}']
+    #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
-    build_dataset(file_ids, input_dir='.', output_dir=".", time_it=TIME, plot_it=PLOT, recreate=RECREATE)
+    build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)
