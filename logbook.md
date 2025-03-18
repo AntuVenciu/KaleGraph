@@ -57,3 +57,10 @@ Use a smaller dataset for quicker answers (10k events)
 -14062024 "python3 train.py --batch-size 10 --lr 0.001 --step-size 5 --epochs 100 --hidden-size 60" 1.18 0.14 0.68 0.7
 -14062024 "python3 train.py --batch-size 64 --epochs 100 --lr 0.005 --step-size 5 --gamma 0.9 --hidden-size 60" 0.98 0.15 0.78 0.78
 -16062024 "python3 train.py --batch-size 64 --epochs 250 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 60" 0.99 0.05 0.71 0.86
+
+### ATTENTION: VERY IMPORTANT!
+
+We log here results from a new approach, segmenting the CDCH
+to have smaller graphs.
+
+-13032025 "python3 train.py --batch-size 64 --epochs 250 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 60"
