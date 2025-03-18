@@ -225,9 +225,11 @@ def main():
 
     # Check that the dataset has already been created
     
-    if len(graph_files) < 15:
+    if len(graph_files) < 1:
         print("Dataset not loaded correctly") 
         return
+
+    #graph_files = graph_files[:10000]
 
     # Split the dataset
     f_train = 0.75
@@ -240,7 +242,7 @@ def main():
     params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
     
     train_set = GraphDataset(partition['train'])
-    train_set.plot(1)
+    #train_set.plot(1)
     
     # scale dataset
     train_set.scale()

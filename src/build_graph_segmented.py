@@ -606,9 +606,9 @@ if __name__ == "__main__" :
 
     PLOT = False
     TIME = True
-    input_dir = "../dataset"
-    output_dir = "../dataset"
+    input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    #output_dir = "../dataset"
     file_ids = [f'0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
-    build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)
+    build_dataset(file_ids, input_dir=input_dir, output_dir=input_dir, time_it=TIME, plot_it=PLOT)
