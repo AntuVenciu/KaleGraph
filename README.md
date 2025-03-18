@@ -54,7 +54,7 @@ suited for us to be deployed by the experiment.
 This is how to do it:
 
 1. `$ module load Python/3.9.10`
-   This loads a Python environment with version `3.9.10` (enough for us).
+   This loads a Python environment with version `3.9.10`.
    This command needs to be run everytime (I think)
 
 2. `$ python3 -m venv ~/venv_gnn`
@@ -68,3 +68,9 @@ Now if you ran command 3. you are inside `venv_gnn`. From here you can run your 
 For example:
 
 4. `$ pip3 install pandas matplotlib torch`
+
+### Requirements
+
+**Make a file for this later**
+
+pytorch 2.6, torch_geometric, sklearn, pandas, numpy, matplotlib, seaborn
