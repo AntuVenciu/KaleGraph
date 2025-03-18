@@ -29,20 +29,22 @@ from sklearn.preprocessing import StandardScaler
 # WARNING: THIS NUMBER HAS TO BE EQUAL TO INTERACTION_NETWORK.PY
 max_n_turns = 6
 
-def train(args, model, device, train_loader, optimizer, epoch, scaler):
+def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
+        print(f"Batch idx {batch_idx} started")
         #t0 = time()
         data = data.to(device)
         #output = model(data.x, data.edge_index, data.edge_attr)
-        output = model(torch.tensor(scaler.fit_transform(data.x)),
+        output = model(data.x,
                        data.edge_index,
-                       torch.tensor(scaler.fit_transform(data.edge_attr)))
-                       
+                       data.edge_attr)
                        
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
+        print(f"truth shape = {y.shape}")
+        print(f"output shape = {output.shape}")
         # Have some problems here
         if max(y.numpy()) > max_n_turns:
             continue
@@ -50,7 +52,7 @@ def train(args, model, device, train_loader, optimizer, epoch, scaler):
         y = y.to(torch.long)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
         y_one_hot_encoding[torch.arange(len(y)), y] = 1
-        
+        print(f"truth one hot encoded = {y_one_hot_encoding}")
         #check if there are any true edges in the graph. (
         yn = y_one_hot_encoding.numpy()
         if yn.sum() == 0:
@@ -75,12 +77,12 @@ def train(args, model, device, train_loader, optimizer, epoch, scaler):
             if args.dry_run:
                 break
         losses.append(loss.item())
-        
+        print(f"{batch_idx} ended. Going to next...")
     print("...epoch time: {0}s".format(time()-epoch_t0))
     print("...epoch {}: train loss={}".format(epoch, losses))
     return losses
 
-def validate(model, device, val_loader, scaler):
+def validate(model, device, val_loader):
     model.eval()
     losses = []
     y_pred_val = torch.empty(0, dtype=torch.long)
@@ -90,9 +92,9 @@ def validate(model, device, val_loader, scaler):
         for batch_idx, data in enumerate(val_loader):
             data = data.to(device)
             #output = model(data.x, data.edge_index, data.edge_attr)
-            output = model(torch.tensor(scaler.transform(data.x)),
+            output = model(data.x,
                            data.edge_index,
-                           torch.tensor(scaler.transform(data.edge_attr)))
+                           data.edge_attr)
             y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
             #perform one hot encoding trasformation.    
             y = y.to(torch.long)
@@ -135,7 +137,7 @@ def validate(model, device, val_loader, scaler):
 
     return  Confusion_mat, losses 
 
-def test(model, device, test_loader, scaler, thld=0.5):
+def test(model, device, test_loader, thld=0.5):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
@@ -145,9 +147,9 @@ def test(model, device, test_loader, scaler, thld=0.5):
         for batch_idx, data in enumerate(test_loader):
             data = data.to(device)
             #output = model(data.x, data.edge_index, data.edge_attr)
-            output = model(torch.tensor(scaler.transform(data.x)),
+            output = model(data.x,
                            data.edge_index,
-                           torch.tensor(scaler.transform(data.edge_attr)))
+                           data.edge_attr)
 
             
 
@@ -217,8 +219,8 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    #inputdir = "."
-    inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    inputdir = "../dataset"
+    #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
@@ -239,10 +241,16 @@ def main():
     
     train_set = GraphDataset(partition['train'])
     train_set.plot(1)
+    
+    # scale dataset
+    train_set.scale()
+    scalers = train_set.scalers
+
+    test_set = GraphDataset(partition['test'], scalers=scalers, fitted=True)
+    val_set = GraphDataset(partition['val'], scalers=scalers, fitted=True)
+    
     train_loader = DataLoader(train_set, **params)
-    test_set = GraphDataset(partition['test'])
     test_loader = DataLoader(test_set, **params)
-    val_set = GraphDataset(partition['val'])
     val_loader = DataLoader(val_set, **params)
     
     print(f"Number of train data samples : {train_set.len()}")
@@ -261,16 +269,15 @@ def main():
     scheduler = StepLR(optimizer, step_size=args.step_size,
                        gamma=args.gamma)
 
-    scaler = StandardScaler() 
     output = {'train_loss': [], 'val_loss' : [], 'val_tpr' : [], 'val_tpr' : [], 'test_loss': [], 'test_acc': []}
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
 
-        train_loss = train(args, model, device, train_loader, optimizer, epoch, scaler)
-        Val_confusion_mat, val_loss= validate(model, device, val_loader,scaler)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch)
+        Val_confusion_mat, val_loss= validate(model, device, val_loader)
 
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader,scaler, thld = 0.5)
+        Test_confusion_mat, test_loss = test(model, device, test_loader, thld = 0.5)
         scheduler.step()
 
         output['train_loss'] += train_loss

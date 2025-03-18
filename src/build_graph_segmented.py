@@ -604,10 +604,10 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = True
+    PLOT = False
     TIME = True
-    input_dir = "."
-    output_dir = "."
+    input_dir = "../dataset"
+    output_dir = "../dataset"
     file_ids = [f'0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
