@@ -88,14 +88,19 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
     # Return the filtered DataFrame
     return hits[filter_condition]
 
-
-#[0,1,2,3,4,5,6,7,8,9,10,11],
-def split_cdch_sectors(cdch_hits,
-                       list_cdch_sectors=[
-                                          [11, 0, 1],
+"""
+[11, 0, 1],
                                           [1, 2, 3],
                                           [3, 4, 5],
                                           [5, 6, 7]
+"""
+#[0,1,2,3,4,5,6,7,8,9,10,11],
+def split_cdch_sectors(cdch_hits,
+                       list_cdch_sectors=[                                              
+                                          [11, 0, 1],
+                                          [1, 2, 3],
+                                          [3, 4, 5],
+                                          [5, 6, 7]                                                                          
                                           ]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
@@ -347,34 +352,80 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
             # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
             if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
                 edge_truth[k] = truth_hits[hit_i]
+            #if we have the last hit, the case is map_abs_idx_sector_idx[int(nexthit_id[hit_j])]] =-1, which is different from hit_i.
+        if(hit_j == len(sector_hits)-1) and (hit_i == len(sector_hits)-2):
+            edge_truth[k] = truth_hits[hit_i]
+    return X, edge_index, edge_attr, edge_truth           
+    
+def create_connection_cyldch_spx_last_hits(hits_spx, hits_cdch, sector_hits):
+    """
+    Here we are connecting the last cdch hit in a turn to, if there is any, the next hit of that turn in the spx. For all turns.
+    """
+    
+    
+    
+    #reset index ordering 
+    hits_spx = hits_spx.reset_index(drop = True)
+    hits_cdch = hits_cdch.reset_index(drop = True)
+
+    
+        
+        
+    #we do know that the last index of the cyldch is connected to the first in the TC: so let us see if the last hit of the cyldch is in the sector
+    # here ordering has not been done yet and also index reset of the sector_hit: this means that the indexes of the hits in the sector are equal to the index of the hits in hits_cdch. See if the last hit index 
+    # is in sector hit!
+    
+    
+    #take last index
+    index = hits_cdch.index.to_numpy()[-1]
+    
+    #if the hit is not in the sector, skip.    
+    if not np.isin(index,sector_hits.index.to_numpy()):
+        return -1, np.empty((2,0)),np.empty((0,3)),np.array([])
+    #if we got here, the index is in the sector, let us record the hit ID then
+    hitID = hits_cdch['hit_id'].to_numpy()[-1]
+    
+    sector_hits = sector_hits.reset_index(drop = True)    
+    hits_spx.index = hits_spx.index + len(sector_hits)
+    index = np.where(sector_hits['hit_id'] == hitID)[0][0] 
     
 
-    return X, edge_index, edge_attr, edge_truth           
 
-def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer_to_connect_spx = 1 ):
+    dx = sector_hits['x0'].to_numpy()[index] - hits_spx['x0'].to_numpy()[0]
+    dy =sector_hits['y0'].to_numpy()[index] - hits_spx['y0'].to_numpy()[0]
+    dTime =sector_hits['time'].to_numpy()[index] - hits_spx['time'].to_numpy()[0]
+    
+    
+    edge_index = np.array([[index], [len(sector_hits)]])
+    edge_attr = np.array([[dx,dy,dTime]])
+    
+    edge_truth = np.array([sector_hits['truth'].to_numpy()[index]])
+    return index, edge_index, edge_attr, edge_truth
+
+def create_connection_between_cdchlayer_spx(hits_spx, sector_hits, All_CDCH_hits ,last_CDCH_layer_to_connect_spx = 1 ):
     #print("\t\t\t SPX hits = ", hits_spx)
-    #print("\t\t\t CDCH hits = ", hits_cdch)
+    #print("\t\t\t CDCH hits = ", sector_hits)
     edge_index = []
     edge_attr = []
     edge_truth = []
 
+    index_last_hit, edge_index_last_hit, edge_attr_last_hit, edge_truth_last_hit = create_connection_cyldch_spx_last_hits(hits_spx, All_CDCH_hits, sector_hits)
     
-    
-    truth_cdch = hits_cdch['truth'].values
+    truth_cdch = sector_hits['truth'].values
     truth_spx = hits_spx['truth'].values
     # Store old ID
-    hits_cdch_placeholder = hits_cdch.copy()
-    old_hits_id = hits_cdch_placeholder['hit_id'].values
-    hits_cdch_placeholder = hits_cdch_placeholder.reset_index(drop=True)
-    hits_cdch_placeholder['hit_id'] = hits_cdch_placeholder.index
+    sector_hits_placeholder = sector_hits.copy()
+    old_hits_id = sector_hits_placeholder['hit_id'].values
+    sector_hits_placeholder = sector_hits_placeholder.reset_index(drop=True)
+    sector_hits_placeholder['hit_id'] = sector_hits_placeholder.index
     
 
 
-    hitIDs_cdch = hits_cdch_placeholder['hit_id'].values
+    hitIDs_cdch = sector_hits_placeholder['hit_id'].values
     hitIDs_SPX = hits_spx['hit_id'].values
  
     layers = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    hits_layers = [hits_cdch_placeholder[hits_cdch_placeholder['wire_id'].floordiv(192) == layer] for layer in layers]
+    hits_layers = [sector_hits_placeholder[sector_hits_placeholder['wire_id'].floordiv(192) == layer] for layer in layers]
     first_non_empty_layer_index = next(index for index,layer in enumerate(hits_layers) if len(layer)!=0)
     #take beginning from the first non empty layer the next n layers, even if they are empty.
     if hits_layers:
@@ -433,10 +484,17 @@ def create_connection_between_cdchlayer_spx(hits_spx, hits_cdch, last_CDCH_layer
             nturns_SPX = truth_spx[j - len(hitIDs_cdch)]
 
         # Set truth
+        """
         if nturns_CDCH == nturns_SPX and nturns_CDCH > 0:
             edge_truth[k] = nturns_SPX
         else:
             edge_truth[k] = 0
+        """
+        #if we have the last hit connection:
+        # This depends both on tuned depth and sector!
+        if(i == index_last_hit and j == len(sector_hits)):
+            edge_truth[k] = edge_truth_last_hit[0]
+            
 
     return edge_index, edge_attr, edge_truth
 
@@ -474,8 +532,8 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
         
         
         #create connections between cdch and spx
-        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, depth_conn_cdch_spx)
-
+        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, hits_cdch , depth_conn_cdch_spx )
+        #index, edge_index_cdch_spx_last,edge_attr_cdch_spx_last, edge_truth_cdch_spx_last=  create_connection_cyldch_spx_last_hits(hits_spx_subgraph, hits_cdch, sector_hits)
         #if there are no connections between spx and cdch, don't append result
         if len(edge_index_cdch_spx)!= 0:
             edge_index_cdch= np.concatenate((edge_index_cdch,edge_index_cdch_spx), axis =1)
@@ -505,7 +563,7 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
     graphs = []
     #
     hits_spx = hits_spx.reset_index(drop = True)
-    
+    hits_cdch = hits_cdch.reset_index(drop = True)
     #build both spx and cdch connections
     #print("\tBuild CDCH and CDCH - SPX graphs...")
     Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_edge_truth_CDCH = build_CDCH_graphs(hits_cdch,
@@ -599,12 +657,11 @@ def build_dataset(file_ids,
 
     print(f"Dataset *.npz files created in {output_dir}")
 
-
 if __name__ == "__main__" :
 
     import sys
 
-    PLOT = False
+    PLOT = True
     TIME = True
     input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     #output_dir = "../dataset"
