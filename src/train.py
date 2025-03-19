@@ -34,7 +34,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     epoch_t0 = time()
     losses = []
     for batch_idx, data in enumerate(train_loader):
-        print(f"Batch idx {batch_idx} started")
+
         #t0 = time()
         data = data.to(device)
         #output = model(data.x, data.edge_index, data.edge_attr)
@@ -43,8 +43,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
                        data.edge_attr)
                        
         y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
-        print(f"truth shape = {y.shape}")
-        print(f"output shape = {output.shape}")
+
         # Have some problems here
         if max(y.numpy()) > max_n_turns:
             continue
@@ -52,13 +51,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
         y = y.to(torch.long)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
         y_one_hot_encoding[torch.arange(len(y)), y] = 1
-        print(f"truth one hot encoded = {y_one_hot_encoding}")
+
         #check if there are any true edges in the graph. (
         yn = y_one_hot_encoding.numpy()
         if yn.sum() == 0:
             continue
-        # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
-        class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
+        # weight loss function by a factor = 1 - N_i / N_TOT to count the unbalance between classes.      
+        class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0))/yn.sum()
          
         loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
         
