@@ -63,6 +63,6 @@ Use a smaller dataset for quicker answers (10k events)
 We log here results from a new approach, segmenting the CDCH
 to have smaller graphs.
 
-* 20032025 "python3 train.py --batch-size 64 --epochs 50 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 60" 
+* 20032025 "python3 train.py --batch-size 128 --epochs 25 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 140" 
 	  * on 150k graphs with SPX and graph depth 4 (adjacent wires), 3 (adjacent layers), 3 (spx cdch connection)
-	  * total number of trainable parameters ~15000
+	  * total number of trainable parameters ~60000
