@@ -210,8 +210,10 @@ def main():
                         help='Number of hidden units per layer')
 
     args = parser.parse_args()
-    # Train on cpu for now
-    device = torch.device('cpu')
+
+    use_cuda = True
+
+    device = torch.device('cuda' if use_cuda else 'cpu')
     torch.manual_seed(args.seed)
 
     # Load the dataset
@@ -303,7 +305,7 @@ def main():
     plt.plot(np.linspace(1, len(output['val_loss']), len(output['val_loss'])), output['val_loss'], label='Validation', color='red')
 
     plt.legend()
-    plt.savifig(f"loss_training_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
+    plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
     
     
@@ -319,9 +321,9 @@ def main():
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
-    plt.savefig(f"confusion_matrix_training_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
+    plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
 
 if __name__ == '__main__':
-    torch.set_num_threads(1)
+    # torch.set_num_threads(1)
     main()
