@@ -597,16 +597,64 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
 
     return graphs
 
-def build_dataset(file_ids,
-                  input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC",
-                  output_dir="./",
-                  time_it=False,
-                  plot_it=False):
+def build_dataset(
+    file_ids,
+    input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC",
+    output_dir="./",
+    time_it=False,
+    plot_it=False,
+    wire_depth=4,
+    layer_depth=3,
+    cdch_spx_depth=2,
+):
     """
-    Build all graphs in file_ids and save them to *.npz files.
-    Only for cdch events at the moment.
-    file_ids (array of string): numbers of the files with events to use for the graph creation, provided as string.
+    Builds graph datasets from a set of event files and saves them as *.npz files.
+
+    This function processes CDCH event data from the specified
+    input directory, converting them into graph representations suitable for machine
+    learning applications. Each processed event graph is saved as an *.npz file in the
+    output directory.
+
+    Parameters:
+    ----------
+    file_ids : list of str
+        A list of file identifiers representing event data files to be processed.
+        These should be provided as strings.
+
+    input_dir : str, optional
+        The directory containing the input event data files. Defaults to:
+        "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC".
+
+    output_dir : str, optional
+        The directory where the processed graph dataset files will be saved.
+        Defaults to the current directory ("./").
+
+    time_it : bool, optional
+        If True, measures and prints the execution time for performance evaluation.
+        Defaults to False.
+
+    plot_it : bool, optional
+        If True, generates and displays plots for visualization purposes.
+        Defaults to False.
+
+    wire_depth : int, optional
+        The depth parameter for CDCH node connection in the same layer.
+        Defaults to 4.
+
+    layer_depth : int, optional
+        The depth parameter for CDCH node connection in different layers.
+        Defaults to 3.
+
+    cdch_spx_depth : int, optional
+        The depth parameter for CDCH - SPX node connection.
+    Up to the last cdch_spx_depth layers of CDCH are connected to SPX.
+        Defaults to 2.
+
+    Notes:
+    ------
+    - The processed graphs are saved in a compressed NumPy format (*.npz).
     """
+
 
     for file_id in file_ids:
         
@@ -618,8 +666,6 @@ def build_dataset(file_ids,
 
         for ev, event in enumerate(events):
             if(ev >=0):
-                if(ev > 72):
-                    break;
                 mc_truth = event[0]
                 cdch_event = event[1]
                 spx_event = event[2]
@@ -634,7 +680,7 @@ def build_dataset(file_ids,
                 # 5) depth_conn_cdch_spx, this is to be tuned: sets how deep in the cdch connection are made with spx hits: ex 1 means only closest layer.
                 #print("Starting to create graph for event ", ev)
                 
-                graphs = build_event_graphs(cdch_event, spx_event, 4, 3, 2)
+                graphs = build_event_graphs(cdch_event, spx_event, wire_depth, layer_depth, cdch_spx_depth)
     
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
@@ -661,7 +707,7 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = True
+    PLOT = False
     TIME = True
     input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     #output_dir = "../dataset"

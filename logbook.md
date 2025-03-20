@@ -1,5 +1,5 @@
 # Training Logbook
-65;7006;1c
+
 To be sure that work is done properly and that no effort is done in vain,
 we shall write a logbook about training tests, in view of finding optimal
 GNN architecture and training parameters.
@@ -63,4 +63,6 @@ Use a smaller dataset for quicker answers (10k events)
 We log here results from a new approach, segmenting the CDCH
 to have smaller graphs.
 
--13032025 "python3 train.py --batch-size 64 --epochs 250 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 60"
+* 20032025 "python3 train.py --batch-size 64 --epochs 50 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 60" 
+	  * on 150k graphs with SPX and graph depth 4 (adjacent wires), 3 (adjacent layers), 3 (spx cdch connection)
+	  * total number of trainable parameters ~15000
