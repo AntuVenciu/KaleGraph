@@ -12,7 +12,7 @@ from torch_geometric.nn import MessagePassing
 from torch.nn import Sequential as Seq, Linear, ReLU, Sigmoid
 
 #We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
-max_n_turns = 5
+max_n_turns = 7
 
 class RelationalModel(nn.Module):
     def __init__(self, input_size, output_size, hidden_size):

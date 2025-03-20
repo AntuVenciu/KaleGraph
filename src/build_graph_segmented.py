@@ -100,7 +100,12 @@ def split_cdch_sectors(cdch_hits,
                                           [11, 0, 1],
                                           [1, 2, 3],
                                           [3, 4, 5],
-                                          [5, 6, 7]                                                                          
+                                          [5, 6, 7],    
+                                          [0,1,2],
+                                          [4,5,6],
+                                          [4,5],
+                                          [5,6],
+                                           [6,7]                                                                     
                                           ]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
@@ -665,7 +670,7 @@ def build_dataset(
         events = load_data(file_id, input_dir=input_dir)
 
         for ev, event in enumerate(events):
-            if(ev >=0):
+            if(ev >0):
                 mc_truth = event[0]
                 cdch_event = event[1]
                 spx_event = event[2]
@@ -685,7 +690,7 @@ def build_dataset(
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
     
-                    output_filename = os.path.join(output_dir, f"{output_dir}/file{file_id}_event{ev}_sectors{sec}.npz")
+                    output_filename = os.path.join(output_dir, f"file{file_id}_event{ev}_sectors{sec}.npz")
     
                     np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
     
@@ -714,4 +719,4 @@ if __name__ == "__main__" :
     file_ids = [f'0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
-    build_dataset(file_ids, input_dir=input_dir, output_dir=input_dir, time_it=TIME, plot_it=PLOT)
+    build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)

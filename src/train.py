@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 
 #We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
 # WARNING: THIS NUMBER HAS TO BE EQUAL TO INTERACTION_NETWORK.PY
-max_n_turns = 5
+max_n_turns = 7
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
@@ -42,11 +42,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
                        data.edge_index,
                        data.edge_attr)
                        
-        y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
+        y, output = data.y.clone().to(torch.float32), output.clone().to(device)
 
         # Have some problems here
-        if max(y.numpy()) > max_n_turns:
-            continue
+        #if max(y.cpu().numpy()) > max_n_turns:
+        #   continue
+            
+            
         #convert to one hot encoding.
         y = y.to(torch.long)
         y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
@@ -59,7 +61,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
         # weight loss function by a factor = 1 - N_i / N_TOT to count the unbalance between classes.      
         class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0))/yn.sum()
          
-        loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+        loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
         
         loss = loss_fn(output, y)
         #print(y)
@@ -94,16 +96,15 @@ def validate(model, device, val_loader):
             output = model(data.x,
                            data.edge_index,
                            data.edge_attr)
-            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
+            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32).to(device)
             #perform one hot encoding trasformation.    
             y = y.to(torch.long)
             
-            # Have some problems here
-            if max(y.numpy()) > max_n_turns:
-                continue
+            #if max(y.cpu().numpy()) > max_n_turns:
+            #	continue
             #if there are no edges.
-            if y.numpy().sum() == 0:
-                continue
+            #if y.numpy().sum() == 0:
+                #continue
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
             yn = y_one_hot_encoding.numpy()
@@ -113,23 +114,23 @@ def validate(model, device, val_loader):
             #print(torch.argmax(y_one_hot_encoding, dim = 1))
             # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
-            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
             loss = loss_fn(output, y)
             losses.append(loss.item())
             #let's build a confusion matrix for all turns.
 
 
             # we keep calculating those for all epochs since we need to keep account of accuracy throughout the training. At the moment we only see the last step to see if it converges to ill minimum.
-            y_pred_val = torch.argmax(output, dim = 1)
-            y_true_val = torch.argmax(y_one_hot_encoding, dim = 1)
+            y_pred_val = torch.cat((y_pred_val,torch.argmax(output.cpu(), dim = 1)), dim =0)
+            y_true_val = torch.cat((y_true_val,torch.argmax(y_one_hot_encoding, dim = 1)), dim =0)
 
             
 
     print('... val loss: {:.4f}\n'
           .format(np.mean(losses)))
     #print(y_pred_val)
-    y_pred_val_np = y_pred_val.numpy()
-    y_true_val_np = y_true_val.numpy()
+    y_pred_val_np = y_pred_val.cpu().numpy()
+    y_true_val_np = y_true_val.cpu().numpy()
     
     Confusion_mat = confusion_matrix(y_pred_val_np, y_true_val_np)      
           
@@ -152,26 +153,26 @@ def test(model, device, test_loader, thld=0.5):
 
             
 
-            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32)
+            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32).to(device)
             
             #perform one hot encoding trasformation.
             y = y.to(torch.long)
             # Have some problems here
-            if max(y.numpy()) > max_n_turns:
-                continue
+            #if max(y.cpu().numpy()) > max_n_turns:
+            #    continue
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
             
             #let's build a confusion matrix for all turns.
             # we keep calculating those for all epochs since we need to keep account of accuracy throughout the training. At the moment we only see the last step to see if it converges to ill minimum.
-            y_pred_test = torch.argmax(output, dim = 1)
-            y_true_test = torch.argmax(y_one_hot_encoding, dim = 1)
+            y_pred_test = torch.cat((y_pred_test,torch.argmax(output.cpu(), dim = 1)), dim =0)
+            y_true_test = torch.cat((y_true_test,torch.argmax(y_one_hot_encoding, dim = 1)), dim =0)
             
             
             
             yn = y_one_hot_encoding.numpy()
             class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
-            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights)
+            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
             loss = loss_fn(output, y)
             losses.append(loss.item())
 
@@ -179,7 +180,7 @@ def test(model, device, test_loader, thld=0.5):
 
     print('... test loss: {:.4f}\n'
           .format(np.mean(losses)))
-    Confusion_mat = confusion_matrix(y_pred_test.numpy(), y_true_test.numpy())
+    Confusion_mat = confusion_matrix(y_pred_test.cpu().numpy(), y_true_test.cpu().numpy())
     return Confusion_mat, losses #np.mean(losses), np.mean(accs)
 
 def main():
@@ -213,15 +214,15 @@ def main():
 
     use_cuda = True
 
-    device = torch.device('cuda' if use_cuda else 'cpu')
+    device = torch.device('cuda:0' if use_cuda else 'cpu')
     torch.manual_seed(args.seed)
 
     # Load the dataset
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    #inputdir = "../dataset"
-    inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    inputdir = "Data/"
+    #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
@@ -245,7 +246,13 @@ def main():
     
     train_set = GraphDataset(partition['train'])
     #train_set.plot(1)
-    
+    """
+    print(len(train_set))
+    maxes = np.zeros(len(train_set))
+    for idx, graph in enumerate(train_set):
+    	maxes[idx] = np.max(train_set.get(idx).y.numpy())
+    print(np.max(maxes))
+    """
     # scale dataset
     train_set.scale()
     scalers = train_set.scalers
@@ -257,6 +264,10 @@ def main():
     test_loader = DataLoader(test_set, **params)
     val_loader = DataLoader(val_set, **params)
     
+
+    
+    
+    
     print(f"Number of train data samples : {train_set.len()}")
     print(f"Number of tests data samples : {test_set.len()}")
     print(f"Number of valid data samples : {val_set.len()}")
@@ -265,6 +276,15 @@ def main():
     NUM_NODE_FEATURES = train_set.get_X_dim()
     NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
     model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=1).to(device)
+
+    print(device)
+    torch.set_float32_matmul_precision('high')
+
+
+
+
+
+
     model = torch.compile(model)
     total_trainable_params = sum(p.numel() for p in model.parameters())
     print('total trainable params:', total_trainable_params)
@@ -305,7 +325,7 @@ def main():
     plt.plot(np.linspace(1, len(output['val_loss']), len(output['val_loss'])), output['val_loss'], label='Validation', color='red')
 
     plt.legend()
-    plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
+    #plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
     
     
@@ -321,7 +341,7 @@ def main():
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
-    plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
+    #plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
 
 if __name__ == '__main__':
