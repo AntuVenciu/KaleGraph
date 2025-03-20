@@ -27,7 +27,7 @@ from sklearn.preprocessing import StandardScaler
 
 #We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
 # WARNING: THIS NUMBER HAS TO BE EQUAL TO INTERACTION_NETWORK.PY
-max_n_turns = 6
+max_n_turns = 5
 
 def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
@@ -76,9 +76,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
             if args.dry_run:
                 break
         losses.append(loss.item())
-        print(f"{batch_idx} ended. Going to next...")
+
     print("...epoch time: {0}s".format(time()-epoch_t0))
-    print("...epoch {}: train loss={}".format(epoch, losses))
+    #print("...epoch {}: train loss={}".format(epoch, losses))
     return losses
 
 def validate(model, device, val_loader):
@@ -218,8 +218,8 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "../dataset"
-    #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    #inputdir = "../dataset"
+    inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
@@ -228,7 +228,8 @@ def main():
         print("Dataset not loaded correctly") 
         return
 
-    #graph_files = graph_files[:10000]
+    # Limit while we wait for GPU training
+    graph_files = graph_files[:100000]
 
     # Split the dataset
     f_train = 0.75
@@ -281,10 +282,10 @@ def main():
         Test_confusion_mat, test_loss = test(model, device, test_loader, thld = 0.5)
         scheduler.step()
 
-        output['train_loss'] += train_loss
-        output['val_loss'] += val_loss
+        output['train_loss'].append(np.mean(train_loss))
+        output['val_loss'].append(np.mean(val_loss))
         #output['val_tpr'] += val_tpr
-        output['test_loss'] += test_loss
+        output['test_loss'].append(np.mean(test_loss))
         #output['test_acc'] += test_acc
     
     # Plotting of history
@@ -302,6 +303,7 @@ def main():
     plt.plot(np.linspace(1, len(output['val_loss']), len(output['val_loss'])), output['val_loss'], label='Validation', color='red')
 
     plt.legend()
+    plt.savifig(f"loss_training_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
     
     
@@ -317,6 +319,7 @@ def main():
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
+    plt.savefig(f"confusion_matrix_training_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
 
 if __name__ == '__main__':
