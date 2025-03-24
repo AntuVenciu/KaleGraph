@@ -83,7 +83,7 @@ def plot(hits, edge_matrix, y):
     # This is not the case now, so let's keep going
     # Dropping hits_id, we can just use the radius sqrt(x0^2 + y0^2) to assert if it is cdch or spx
     
-    mask_spx = hits[:,5].astype(bool)
+    mask_spx = hits[:,5].astype(int).astype(bool)
     mask_cdch = ~mask_spx
     # plot CDCH hits
     plt.errorbar(hits[mask_cdch][:,0], hits[mask_cdch][:,1], fmt = fmts[0], markersize = 10, color = colors[0])
@@ -172,7 +172,6 @@ if __name__ == "__main__":
     filename = "/home/antu/KaleGraph/graph_files_val_1e6/event1005_sectors1.npz"
     filename = "file01002_event0_sectors0.npz"
     graph = load_graph_npz(filename)
-    print(graph['X'].shape)
-    print(graph['edge_index'].shape)
+
     
     plot(graph['X'], graph['edge_index'], graph['truth'])

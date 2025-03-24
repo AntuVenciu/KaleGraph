@@ -25,6 +25,7 @@ class RelationalModel(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, output_size),
+            
         )
 
     def forward(self, m):
@@ -36,6 +37,8 @@ class ObjectModel(nn.Module):
 
         self.layers = nn.Sequential(
             nn.Linear(input_size, hidden_size),
+            nn.ReLU(),
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
@@ -62,8 +65,8 @@ class InteractionNetwork(MessagePassing):
                  hidden_size,
                  node_features_dim,
                  edge_features_dim,
-                 time_steps=1):
-        super(InteractionNetwork, self).__init__(aggr='mean', 
+                 time_steps=2):
+        super(InteractionNetwork, self).__init__(aggr='sum', 
                                                  flow='source_to_target')
         #build update function for edges
         self.R1 = RelationalModel(2 * node_features_dim + edge_features_dim, edge_features_dim, hidden_size)
@@ -94,6 +97,7 @@ class InteractionNetwork(MessagePassing):
         #apply softmax to impose multiclass 
         #return torch.softmax(self.R2(m2), dim = 1)#torch.sigmoid(self.R2(m2))
         return self.R2(m2) #torch.sigmoid(self.R2(m2))
+        #return torch.sigmoid(self.R2(m2))
     def message(self, x_i, x_j, edge_attr):
         # x_i --> incoming
         # x_j --> outgoing

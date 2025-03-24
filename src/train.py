@@ -22,6 +22,7 @@ from utils.dataset import GraphDataset
 from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
+from torch_geometric.utils import subgraph
 
 
 
@@ -58,10 +59,13 @@ def train(args, model, device, train_loader, optimizer, epoch):
         yn = y_one_hot_encoding.numpy()
         if yn.sum() == 0:
             continue
-        # weight loss function by a factor = 1 - N_i / N_TOT to count the unbalance between classes.      
-        class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0))/yn.sum()
-         
-        loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
+        #weight loss function by a factor = 1 - N_i / N_TOT to count the unbalance between classes.      
+        #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
+        #class_weights = 1/ yn.sum() / torch.sum(y_one_hot_encoding, dim=0)
+        #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
+        
+        
+        loss_fn = torch.nn.CrossEntropyLoss().to(device)
         
         loss = loss_fn(output, y)
         #print(y)
@@ -113,8 +117,11 @@ def validate(model, device, val_loader):
             #print(torch.argmax(output, dim = 1))
             #print(torch.argmax(y_one_hot_encoding, dim = 1))
             # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
-            class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
-            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
+            #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
+            #class_weights = 1/yn.sum() / torch.sum(y_one_hot_encoding, dim=0)
+            #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
+            
+            loss_fn = torch.nn.CrossEntropyLoss().to(device)
             loss = loss_fn(output, y)
             losses.append(loss.item())
             #let's build a confusion matrix for all turns.
@@ -137,7 +144,7 @@ def validate(model, device, val_loader):
 
     return  Confusion_mat, losses 
 
-def test(model, device, test_loader, thld=0.5):
+def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
@@ -171,13 +178,51 @@ def test(model, device, test_loader, thld=0.5):
             
             
             yn = y_one_hot_encoding.numpy()
-            class_weights = torch.sum(y_one_hot_encoding, dim = 0)/yn.sum()
-            loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
+            #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
+
+            
+            #class_weights = 1/yn.sum() / torch.sum(y_one_hot_encoding, dim=0)
+            
+            #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
+            
+            loss_fn = torch.nn.CrossEntropyLoss().to(device)
             loss = loss_fn(output, y)
             losses.append(loss.item())
 
+            
+            if batch_idx == len(test_loader)-1 and isFinalEpoch == True:  
+                
+                # Trova gli ID dei grafi nel batch
+                unique_graph_ids = data.batch.unique().cpu().numpy()
+                print(unique_graph_ids)
+                #random_graph_id = unique_graph_ids[torch.randint(0, len(unique_graph_ids), (1,))].item()  # Scegli uno a caso
+                for random_graph_id in unique_graph_ids:
+
+                    # Crea una maschera per i nodi del grafo selezionato
+                    node_mask = data.batch == random_graph_id
+
+                    # Trova gli edge che collegano nodi appartenenti al grafo selezionato
+                    edge_mask = (node_mask[data.edge_index[0]] & node_mask[data.edge_index[1]])
 
 
+                    # Seleziona gli edge e gli attributi corrispondenti
+                    edge_index = data.edge_index[:, edge_mask].cpu()
+                    edge_attr = data.edge_attr[edge_mask].cpu() if data.edge_attr is not None else None
+
+                    X_subgraph = data.x[node_mask].cpu()
+                    X_denormalized = torch.tensor(scalers['X'].inverse_transform(X_subgraph), dtype=torch.float32).numpy()
+                    edge_attr_denormalized = torch.tensor(scalers['edge_attr'].inverse_transform(edge_attr), dtype=torch.float32).numpy()
+                
+                    
+                    output_file = f'DataTruthPredicted/{random_graph_id}_test_pred_truth.npz'
+                    np.savez(output_file, 
+                         X=X_denormalized,
+                         edge_attr=edge_attr_denormalized,
+                         edge_index=edge_index.numpy(),
+                         truth=y[edge_mask].cpu().numpy(),
+                         predicted=torch.argmax(output[edge_mask].cpu(), dim =1).numpy())
+            
+                
     print('... test loss: {:.4f}\n'
           .format(np.mean(losses)))
     Confusion_mat = confusion_matrix(y_pred_test.cpu().numpy(), y_true_test.cpu().numpy())
@@ -209,6 +254,8 @@ def main():
                         help='For Saving the current Model')
     parser.add_argument('--hidden-size', type=int, default=100,
                         help='Number of hidden units per layer')
+    parser.add_argument('--save-sample-test', action = 'store_true', default = False,
+    			help = 'For saving the last batch of test dataset with both truth and prediction for visualization')
 
     args = parser.parse_args()
 
@@ -221,7 +268,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "Data/"
+    inputdir = "DataFullGraph/"
     #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
@@ -232,18 +279,19 @@ def main():
         return
 
     # Limit while we wait for GPU training
-    graph_files = graph_files[:100000]
+    graph_files = graph_files[:]
 
     # Split the dataset
     f_train = 0.75
     f_test = 0.15
-
+    #graph_files = graph_files[0:50000]
     partition = {'train': graph_files[: int(f_train * len(graph_files))],
                  'test':  graph_files[int(f_train * len(graph_files)) : int((f_train + f_test)*len(graph_files))],
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
-    params = {'batch_size': args.batch_size, 'shuffle' : False, 'num_workers' : 4}
-    
+    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 4}
+    print(args)
+    print(args.save_model)
     train_set = GraphDataset(partition['train'])
     #train_set.plot(1)
     """
@@ -265,7 +313,7 @@ def main():
     val_loader = DataLoader(val_set, **params)
     
 
-    
+
     
     
     print(f"Number of train data samples : {train_set.len()}")
@@ -299,9 +347,11 @@ def main():
 
         train_loss = train(args, model, device, train_loader, optimizer, epoch)
         Val_confusion_mat, val_loss= validate(model, device, val_loader)
-
+        isFinalEpoch = False
+        if epoch == args.epochs :
+            isFinalEpoch =  True
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader, thld = 0.5)
+        Test_confusion_mat, test_loss = test(model, device, test_loader, scalers,isFinalEpoch, thld = 0.5)
         scheduler.step()
 
         output['train_loss'].append(np.mean(train_loss))
@@ -324,25 +374,54 @@ def main():
     plt.plot(np.linspace(1, len(output['test_loss']), len(output['test_loss'])), output['test_loss'], label='Test', color='orange')
     plt.plot(np.linspace(1, len(output['val_loss']), len(output['val_loss'])), output['val_loss'], label='Validation', color='red')
 
+
+    filename = "Val_confusion_matrix.txt"
+
+    # Salva la matrice di confusione in un file di testo
+    with open(filename, 'w') as f:
+        f.write("Confusion Matrix (Normalized by rows):\n")
+        for i, row in enumerate(Val_confusion_mat):
+            f.write(f"Row {i}: {row}\n")
+            
+    filename = "Test_confusion_matrix.txt"
+
+    # Salva la matrice di confusione in un file di testo
+    with open(filename, 'w') as f:
+        f.write("Confusion Matrix (Normalized by rows):\n")
+        for i, row in enumerate(Test_confusion_mat):
+            f.write(f"Row {i}: {row}\n")
+            
+    
     plt.legend()
     #plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     plt.show()
-    
-    
-    labels = ['Rumore', 'Giro 1', 'Giro 2', 'Giro 3', 'Giro 4', 'Giro 5', 'Giro 6']
+    #Val_confusion_mat = Val_confusion_mat / Val_confusion_mat.sum(axis=1, keepdims=True)
+    #Test_confusion_mat = Test_confusion_mat / Test_confusion_mat.sum(axis=1, keepdims=True)
+    labels = ['Noise', 'Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5', 'Turn 6']
     # Visualizza la matrice di confusione con un heatmap
-    sns.heatmap(Val_confusion_mat, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels)
+    
+    sns.heatmap(Val_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels)
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
-    plt.show()
+    #plt.show()
     
-    sns.heatmap(Test_confusion_mat, annot=True, fmt='d', cmap='Blues', xticklabels=labels, yticklabels=labels) 
+    sns.heatmap(Test_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels) 
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
     #plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
-    plt.show()
+    #plt.show()
+
+    if args.save_model:
+        torch.save({'epoch':args.epochs,
+                   'model_state_dict':model.state_dict(),
+                   'optimizer_state_dict':optimizer.state_dict(),
+                   'scheduler_state_dict': scheduler.state_dict(),
+                   'Val_Conf_matrix':torch.tensor(Val_confusion_mat, dtype=torch.int32),
+                   'Test_Conf_matrix': torch.tensor(Test_confusion_mat, dtype=torch.int32),
+                   }, "model1.pth"
+                   )
 
 if __name__ == '__main__':
     # torch.set_num_threads(1)
