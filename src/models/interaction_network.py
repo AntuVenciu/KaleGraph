@@ -65,7 +65,7 @@ class InteractionNetwork(MessagePassing):
                  hidden_size,
                  node_features_dim,
                  edge_features_dim,
-                 time_steps=2):
+                 time_steps=1):
         super(InteractionNetwork, self).__init__(aggr='sum', 
                                                  flow='source_to_target')
         #build update function for edges

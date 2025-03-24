@@ -5,25 +5,11 @@ from matplotlib.cm import tab10
 from utils.tools import load_graph_npz
 from utils.plot_graph import plot
 import pandas as pd
+import sys
+from models.interaction_network import InteractionNetwork
+from utils.dataset import GraphDataset
 
-
-
-    
-if __name__ == "__main__":
-    """
-    Test plot function
-    """
-    #import build_graph as bg
-
-    #hitIDs = [i for i in range(0, 1920 + 512) if np.random.uniform() > 0.9]
-    #edges['edge_index'] = bg.build_graph(hitIDs)
-    #plot(edges)
-
-    """
-    Test plotting a graph from npz files
-    """
-
-    filename = "DataTruthPredicted/3_test_pred_truth.npz"
+def plot_example(filename):
     graph = np.load(filename)
     
     print(graph['X'].shape)
@@ -41,3 +27,28 @@ if __name__ == "__main__":
     plot(graph['X'],edge_index, graph['truth'])
     
     plot(graph['X'],edge_index, graph['predicted'])
+    
+    
+    
+    
+    
+if __name__ == "__main__":
+    """
+    Test plot function
+    """
+   
+
+    """
+    Test plotting a graph from npz files
+    """
+    
+    
+    
+    
+    
+    
+    filename = "DataTruthPredicted/file01030_event1_sectors0.npz_test_pred_truth.npz"
+    
+    
+    plot_example(filename)
+    

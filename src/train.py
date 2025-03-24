@@ -22,7 +22,7 @@ from utils.dataset import GraphDataset
 from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
-from torch_geometric.utils import subgraph
+
 import joblib #we use this to save the scaler.
 
 
@@ -280,7 +280,7 @@ def main():
 
     # Limit while we wait for GPU training
     graph_files = graph_files[:]
-
+    time_steps = 2;
     # Split the dataset
     f_train = 0.75
     f_test = 0.15
@@ -322,7 +322,9 @@ def main():
     # Set to the correct number of features
     NUM_NODE_FEATURES = train_set.get_X_dim()
     NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
-    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps=1).to(device)
+    print(NUM_NODE_FEATURES)
+    print(NUM_EDGE_FEATURES)
+    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps).to(device)
 
     print(device)
     torch.set_float32_matmul_precision('high')
@@ -355,9 +357,8 @@ def main():
 
         output['train_loss'].append(np.mean(train_loss))
         output['val_loss'].append(np.mean(val_loss))
-        #output['val_tpr'] += val_tpr
         output['test_loss'].append(np.mean(test_loss))
-        #output['test_acc'] += test_acc
+
     
     # Plotting of history
     
@@ -422,6 +423,7 @@ def main():
                     'scheduler_state_dict': scheduler.state_dict(),
                     'Val_Conf_matrix':torch.tensor(Val_confusion_mat, dtype=torch.int32),
                     'Test_Conf_matrix': torch.tensor(Test_confusion_mat, dtype=torch.int32),
+                    'hyper_params': {'hidden_size':args.hidden_size, 'node_features':NUM_NODE_FEATURES, 'edge_features':NUM_EDGE_FEATURES, 'time_steps': time_steps}
                     }, "model1.pth"
                    )
         joblib.dump(scalers, "scaler1.pkl")
