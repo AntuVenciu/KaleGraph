@@ -70,9 +70,9 @@ to have smaller graphs.
 
 ### 24 March 2025
 New architecture: tried three different models:
--24032025 Model 1: "python3 train.py --epochs 100 --lr 0.5e-4  --gamma 1 --hidden-size 250" 
--24032025 Model 2: "python3 train.py --epochs 100 --lr 0.5e-4  --gamma 1 --hidden-size 500" 
--24032025 Model 3: "python3 train.py --epochs 100 --lr 0.5e-4 --gamma 1 --hidden-size 1000" 
+* 24032025 Model 1: "python3 train.py --epochs 100 --lr 0.5e-4  --gamma 1 --hidden-size 250" 
+* 24032025 Model 2: "python3 train.py --epochs 100 --lr 0.5e-4  --gamma 1 --hidden-size 500" 
+* 24032025 Model 3: "python3 train.py --epochs 100 --lr 0.5e-4 --gamma 1 --hidden-size 1000" 
 
 Model1 1st turn Sensitivity on test: 87%, 
 Model2 1st turn Sensitivity on test: 89% 
@@ -80,7 +80,7 @@ Model3 1st turn Sensitivity on test: 92%
 
 The most performant model on testing seems to be the third with hidden size equal to 1000.
 
-1)Aggregation function: 'sum'
+1)Aggregation function: 'sum'--> added before removing weighting of classes, it performed better compared to 'mean', 'max' aggregations. In order. 'sum'>'max'>'mean'
 2)Message passing steps: 1
 3)Feature used: 'x0', 'y0', 'zTimeDiff', 'isSPX', 'amplitude', 'thetaStereo', 'phiStereo', 'Time'
 4)For SPXHits, phiStereo and thetaStereo are put to 0.
