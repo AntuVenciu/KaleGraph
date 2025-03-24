@@ -23,7 +23,7 @@ from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
 from torch_geometric.utils import subgraph
-
+import joblib #we use this to save the scaler.
 
 
 #We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
@@ -424,6 +424,7 @@ def main():
                     'Test_Conf_matrix': torch.tensor(Test_confusion_mat, dtype=torch.int32),
                     }, "model1.pth"
                    )
+        joblib.dump(scalers, "scaler1.pkl")
 
 if __name__ == '__main__':
     # torch.set_num_threads(1)
