@@ -41,7 +41,7 @@ Set f_cdch and f_spx to 0.05
 
 -12062024 "python3 train.py --batch-size 32 --lr 0.002 --step-size 1 --hidden-size 40" 1.15 0.5 0.68 0.68
 
-### ATTENTION: Very important!
+### WARNING: Very important!
 
 A new training goal is needed for the algorithm to converge:
 1. Either we try to classify good nodes
@@ -58,7 +58,7 @@ Use a smaller dataset for quicker answers (10k events)
 -14062024 "python3 train.py --batch-size 64 --epochs 100 --lr 0.005 --step-size 5 --gamma 0.9 --hidden-size 60" 0.98 0.15 0.78 0.78
 -16062024 "python3 train.py --batch-size 64 --epochs 250 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 60" 0.99 0.05 0.71 0.86
 
-### ATTENTION: VERY IMPORTANT!
+### WARNING: VERY IMPORTANT!
 
 We log here results from a new approach, segmenting the CDCH
 to have smaller graphs.
@@ -66,3 +66,25 @@ to have smaller graphs.
 * 20032025 "python3 train.py --batch-size 128 --epochs 25 --lr 0.009 --step-size 10 --gamma 0.95 --hidden-size 140" 
 	  * on 150k graphs with SPX and graph depth 4 (adjacent wires), 3 (adjacent layers), 3 (spx cdch connection)
 	  * total number of trainable parameters ~60000
+
+
+### 24 March 2025
+New architecture: tried three different models:
+-24032025 Model 1: "python3 train.py --epochs 100 --lr 0.5e-4  --gamma 1 --hidden-size 250" 
+-24032025 Model 2: "python3 train.py --epochs 100 --lr 0.5e-4  --gamma 1 --hidden-size 500" 
+-24032025 Model 3: "python3 train.py --epochs 100 --lr 0.5e-4 --gamma 1 --hidden-size 1000" 
+
+Model1 1st turn Sensitivity on test: 87%, 
+Model2 1st turn Sensitivity on test: 89% 
+Model3 1st turn Sensitivity on test: 92%   
+
+The most performant model on testing seems to be the third with hidden size equal to 1000.
+
+1)Aggregation function: 'sum'
+2)Message passing steps: 1
+3)Feature used: 'x0', 'y0', 'zTimeDiff', 'isSPX', 'amplitude', 'thetaStereo', 'phiStereo', 'Time'
+4)For SPXHits, phiStereo and thetaStereo are put to 0.
+5)Training was performed on full graph
+6)Removed weighting of classes
+
+
