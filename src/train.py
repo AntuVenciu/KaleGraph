@@ -290,8 +290,7 @@ def main():
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
     params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 4}
-    print(args)
-    print(args.save_model)
+   
     train_set = GraphDataset(partition['train'])
     #train_set.plot(1)
     """
@@ -394,7 +393,7 @@ def main():
     
     plt.legend()
     #plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
-    plt.show()
+    #plt.show()
     #Val_confusion_mat = Val_confusion_mat / Val_confusion_mat.sum(axis=1, keepdims=True)
     #Test_confusion_mat = Test_confusion_mat / Test_confusion_mat.sum(axis=1, keepdims=True)
     labels = ['Noise', 'Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5', 'Turn 6']
@@ -415,12 +414,15 @@ def main():
 
     if args.save_model:
         torch.save({'epoch':args.epochs,
-                   'model_state_dict':model.state_dict(),
-                   'optimizer_state_dict':optimizer.state_dict(),
-                   'scheduler_state_dict': scheduler.state_dict(),
-                   'Val_Conf_matrix':torch.tensor(Val_confusion_mat, dtype=torch.int32),
-                   'Test_Conf_matrix': torch.tensor(Test_confusion_mat, dtype=torch.int32),
-                   }, "model1.pth"
+                    'train_loss':torch.tensor( output['train_loss'],dtype=torch.float32),
+                    'val_loss':torch.tensor( output['val_loss'],dtype=torch.float32),
+                    'test_loss':torch.tensor( output['test_loss'],dtype=torch.float32),
+                    'model_state_dict':model.state_dict(),
+                    'optimizer_state_dict':optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'Val_Conf_matrix':torch.tensor(Val_confusion_mat, dtype=torch.int32),
+                    'Test_Conf_matrix': torch.tensor(Test_confusion_mat, dtype=torch.int32),
+                    }, "model1.pth"
                    )
 
 if __name__ == '__main__':
