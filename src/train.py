@@ -25,6 +25,8 @@ from sklearn.preprocessing import StandardScaler
 
 import joblib #we use this to save the scaler.
 
+from DataEvaluation import load_model
+
 
 #We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
 # WARNING: THIS NUMBER HAS TO BE EQUAL TO INTERACTION_NETWORK.PY
@@ -61,7 +63,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
             continue
         #weight loss function by a factor = 1 - N_i / N_TOT to count the unbalance between classes.      
         #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
-        #class_weights = 1/ yn.sum() / torch.sum(y_one_hot_encoding, dim=0)
+        #class_weights = 1/ torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
         #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
         
         
@@ -118,7 +120,7 @@ def validate(model, device, val_loader):
             #print(torch.argmax(y_one_hot_encoding, dim = 1))
             # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
             #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
-            #class_weights = 1/yn.sum() / torch.sum(y_one_hot_encoding, dim=0)
+            #class_weights = 1/ torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
             #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
             
             loss_fn = torch.nn.CrossEntropyLoss().to(device)
@@ -181,7 +183,7 @@ def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
             #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
 
             
-            #class_weights = 1/yn.sum() / torch.sum(y_one_hot_encoding, dim=0)
+            #class_weights = 1 / torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
             
             #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
             
@@ -256,7 +258,10 @@ def main():
                         help='Number of hidden units per layer')
     parser.add_argument('--save-sample-test', action = 'store_true', default = False,
     			help = 'For saving the last batch of test dataset with both truth and prediction for visualization')
-
+    parser.add_argument('--load-model', type = str , default = None,
+    			help = 'For reloading a model, to retrain.')	
+    parser.add_argument('--load-scaler', type = str , default = None,
+    			help = 'For reloading a model scaler, to retrain.')
     args = parser.parse_args()
 
     use_cuda = True
@@ -268,7 +273,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "DataFullGraph/"
+    inputdir = "Data4ConnCYLDCH7ConnSpxWithMCFeatures"
     #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
@@ -293,54 +298,97 @@ def main():
    
     train_set = GraphDataset(partition['train'])
     #train_set.plot(1)
-    """
-    print(len(train_set))
-    maxes = np.zeros(len(train_set))
-    for idx, graph in enumerate(train_set):
-    	maxes[idx] = np.max(train_set.get(idx).y.numpy())
-    print(np.max(maxes))
-    """
-    # scale dataset
-    train_set.scale()
-    scalers = train_set.scalers
+    
+    
 
+    
+    
+
+
+    
+    
+    
+
+    # Set to the correct number of features
+    NUM_NODE_FEATURES = train_set.get_X_dim()
+    NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
+    
+    print(NUM_NODE_FEATURES)
+    print(NUM_EDGE_FEATURES)
+    #load model and scaler
+    model = None
+    scaler = None
+    if args.load_model:
+        
+        if not args.load_scaler:
+            raise OSError('Please specify a path for a scaler.')
+        
+        ModelState = torch.load(args.load_model)
+        optimizer, scheduler,model = load_model(ModelState)
+        scalers = joblib.load(args.load_scaler)
+        if ModelState['hyper_params']['node_features'] != NUM_NODE_FEATURES:
+            raise ValueError(
+                      "The number of node features of the model ({model_features}) and of the data ({data_features}) do not match. "
+                      "Please check you are using the correct dataset or loading the correct model.".format(
+                                                                model_features=ModelState['hyper_params']['node_features'], 
+                                                                data_features=NUM_NODE_FEATURES
+                                                                )
+                            )
+        
+        if ModelState['hyper_params']['edge_features'] != NUM_EDGE_FEATURES:
+            raise ValueError(
+                      "The number of node features of the model ({model_features}) and of the data ({data_features}) do not match. "
+                      "Please check you are using the correct dataset or loading the correct model.".format(
+                                                                model_features=ModelState['hyper_params']['edge_features'], 
+                                                                data_features=NUM_EDGE_FEATURES
+                                                                )
+                            )
+        train_set = GraphDataset(partition['train'], scalers = scalers, fitted = True)
+        model = model.to(device)
+        print("Model successfully loaded")
+    else:
+        model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps).to(device)
+        train_set.scale()
+        scalers = train_set.scalers
+    print(device)
+    torch.set_float32_matmul_precision('high')
+
+    #now that we have a scaler, we can scale the test and val data according to it
     test_set = GraphDataset(partition['test'], scalers=scalers, fitted=True)
     val_set = GraphDataset(partition['val'], scalers=scalers, fitted=True)
     
     train_loader = DataLoader(train_set, **params)
     test_loader = DataLoader(test_set, **params)
     val_loader = DataLoader(val_set, **params)
-    
 
-
-    
-    
     print(f"Number of train data samples : {train_set.len()}")
     print(f"Number of tests data samples : {test_set.len()}")
     print(f"Number of valid data samples : {val_set.len()}")
-
-    # Set to the correct number of features
-    NUM_NODE_FEATURES = train_set.get_X_dim()
-    NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
-    print(NUM_NODE_FEATURES)
-    print(NUM_EDGE_FEATURES)
-    model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps).to(device)
-
-    print(device)
-    torch.set_float32_matmul_precision('high')
-
-
-
-
-
 
     model = torch.compile(model)
     total_trainable_params = sum(p.numel() for p in model.parameters())
     print('total trainable params:', total_trainable_params)
     
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = StepLR(optimizer, step_size=args.step_size,
-                       gamma=args.gamma)
+    #scheduler = StepLR(optimizer, step_size=args.step_size,
+    #                   gamma=args.gamma)
+    
+    #scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, 1e-5, args.lr,  step_size_up=10, step_size_down=None, mode='triangular', gamma=args.gamma, scale_fn=None, scale_mode='cycle',last_epoch=-1)
+    #def lr_lambda(epoch):
+    #    return 1 if epoch < 10 else (1e-5 / args.lr)  # Dopo 10 epoche, diventa 1e-4
+     
+    def lr_lambda(epoch):
+        if epoch < 5:
+            return 1  # LR normale (3e-3)
+        elif epoch < 10:
+            return 1e-3 / args.lr  # Ridotto a 1e-3
+        elif epoch < 20:
+            return 1e-4 / args.lr  # Ridotto a 3e-4
+        elif epoch < 40:
+            return 0.7e-4 / args.lr
+      
+
+    scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
 
     output = {'train_loss': [], 'val_loss' : [], 'val_tpr' : [], 'val_tpr' : [], 'test_loss': [], 'test_acc': []}
     for epoch in range(1, args.epochs + 1):
@@ -375,21 +423,21 @@ def main():
     plt.plot(np.linspace(1, len(output['val_loss']), len(output['val_loss'])), output['val_loss'], label='Validation', color='red')
 
 
-    filename = "Val_confusion_matrix.txt"
+    #filename = "Val_confusion_matrix.txt"
 
     # Salva la matrice di confusione in un file di testo
-    with open(filename, 'w') as f:
-        f.write("Confusion Matrix (Normalized by rows):\n")
-        for i, row in enumerate(Val_confusion_mat):
-            f.write(f"Row {i}: {row}\n")
+    #with open(filename, 'w') as f:
+    #    f.write("Confusion Matrix (Normalized by rows):\n")
+    #    for i, row in enumerate(Val_confusion_mat):
+    #        f.write(f"Row {i}: {row}\n")
             
-    filename = "Test_confusion_matrix.txt"
+    #filename = "Test_confusion_matrix.txt"
 
     # Salva la matrice di confusione in un file di testo
-    with open(filename, 'w') as f:
-        f.write("Confusion Matrix (Normalized by rows):\n")
-        for i, row in enumerate(Test_confusion_mat):
-            f.write(f"Row {i}: {row}\n")
+    #with open(filename, 'w') as f:
+    #   f.write("Confusion Matrix (Normalized by rows):\n")
+    #    for i, row in enumerate(Test_confusion_mat):
+    #        f.write(f"Row {i}: {row}\n")
             
     
     plt.legend()
@@ -424,9 +472,9 @@ def main():
                     'Val_Conf_matrix':torch.tensor(Val_confusion_mat, dtype=torch.int32),
                     'Test_Conf_matrix': torch.tensor(Test_confusion_mat, dtype=torch.int32),
                     'hyper_params': {'hidden_size':args.hidden_size, 'node_features':NUM_NODE_FEATURES, 'edge_features':NUM_EDGE_FEATURES, 'time_steps': time_steps}
-                    }, "model1.pth"
+                    }, f"{args.hidden_size}model1.pth"
                    )
-        joblib.dump(scalers, "scaler1.pkl")
+        joblib.dump(scalers, f"{args.hidden_size}scaler1.pkl")
 
 if __name__ == '__main__':
     # torch.set_num_threads(1)

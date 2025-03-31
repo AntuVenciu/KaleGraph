@@ -50,7 +50,7 @@ def load_model(ModelState):
 
 
     # 5. Metti il modello in modalità evaluation
-    model.eval()
+    #model.eval()
     return optimizer, scheduler,model
     
     
@@ -68,14 +68,14 @@ def evaluate_data(model, test_loader, scalers, name):
 
 
             # denormalize output
-            X_denormalized = torch.tensor(scalers['X'].inverse_transform(data.x), dtype=torch.float32).numpy()
-            edge_attr_denormalized = torch.tensor(scalers['edge_attr'].inverse_transform(data.edge_attr), dtype=torch.float32).numpy()
+            X_denormalized = torch.tensor(scalers['X'].inverse_transform(data.x.cpu()), dtype=torch.float32).numpy()
+            edge_attr_denormalized = torch.tensor(scalers['edge_attr'].inverse_transform(data.edge_attr.cpu()), dtype=torch.float32).numpy()
             print(batch_idx)
             output_file = f'DataTruthPredicted/{name}_test_pred_truth.npz'
             np.savez(output_file, 
                          X=X_denormalized,
                          edge_attr=edge_attr_denormalized,
-                         edge_index=data.edge_index.numpy(),
+                         edge_index=data.edge_index.cpu().numpy(),
                          truth=y.cpu().numpy(),
                          predicted=torch.argmax(output.cpu(), dim =1).numpy())
                          
@@ -84,8 +84,8 @@ def PlotMyModelResults(ModelState):
     train_loss = ModelState['train_loss'].numpy()
     val_loss = ModelState['val_loss'].numpy()
     test_loss = ModelState['test_loss'].numpy()
-    Val_confusion_mat = ModelState['Val_Conf_matrix'].numpy()  
-    Test_confusion_mat = ModelState['Test_Conf_matrix'].numpy()      
+    Val_confusion_mat = ModelState['Val_Conf_matrix'].numpy()[:7, :7]  
+    Test_confusion_mat = ModelState['Test_Conf_matrix'].numpy()[:7, :7]      
     
     plt.title("KaleGraph Training")
     plt.xlabel("Epoch")
@@ -97,15 +97,19 @@ def PlotMyModelResults(ModelState):
     plt.legend()
     plt.show()
 
-    
+
     labels = ['Noise', 'Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5', 'Turn 6']
-    
+    Val_confusion_mat = Val_confusion_mat / Val_confusion_mat.sum(axis=1, keepdims=True)
+    Test_confusion_mat = Test_confusion_mat / Test_confusion_mat.sum(axis=1, keepdims=True)
+
     #plot validation confusion matrix
     plt.xlabel("Predicted Label")
     plt.ylabel("True Label")
     plt.title("Validation Confusion Matrix")
     
-    sns.heatmap(Val_confusion_mat, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels)
+    
+    #cambia da .3f a d se necessario!
+    sns.heatmap(Val_confusion_mat, annot=True, fmt=".3f", cmap="Blues", xticklabels=labels, yticklabels=labels)
     plt.show()
     
     
@@ -114,7 +118,7 @@ def PlotMyModelResults(ModelState):
     plt.ylabel("True Label")
     plt.title("Test Confusion Matrix")
     
-    sns.heatmap(Test_confusion_mat, annot=True, fmt="d", cmap="Blues", xticklabels=labels, yticklabels=labels)
+    sns.heatmap(Test_confusion_mat, annot=True, fmt=".3f", cmap="Blues", xticklabels=labels, yticklabels=labels)
     plt.show()
     
 if __name__ == "__main__":
@@ -124,13 +128,16 @@ if __name__ == "__main__":
     """
     
     
-    PlotResults = False
-    
+    PlotResults = True
+    ProduceData = False
     torch.set_float32_matmul_precision('high')
     
     #pass your model and scaler
-    filepath_model = "ModelsMade/MessagePassSteps2/model1.pth"
-    file_path_scaler = "ModelsMade/MessagePassSteps2/scaler1.pkl"
+    #filepath_model = "ModelsMade/MessagePassSteps2/model2.pth"
+    #file_path_scaler = "ModelsMade/MessagePassSteps2/scaler2.pkl"
+    #pass your model and scaler
+    filepath_model = "250model1.pth"
+    file_path_scaler = "250scaler1.pkl"
     
     
     
@@ -146,22 +153,26 @@ if __name__ == "__main__":
     if PlotResults:
         PlotMyModelResults(ModelState)
     
-    name = "file01030_event1_sectors0.npz"
-    
-    test_file_name = "DataForTesting/" + name
-    #graphTest = np.load(test_file_name)
-    graph_files = glob.glob(test_file_name)
-    
-    test_set = GraphDataset(graph_files, scalers=MyScaler, fitted=True)
-
-    use_cuda = False
-    #now we have our graph: let us evaluate this graph.
+    name = [f"file01030_event{i}_sectors0.npz" for i in range(10, 50)]
+    print(name)
+    #name = "file01030_event1_sectors0.npz"
+    use_cuda = True
     device = torch.device('cuda:0' if use_cuda else 'cpu')
-    myModel = myModel.to(device)
-    params = {'batch_size':1 , 'shuffle' : False, 'num_workers' : 4}
-    test_loader = DataLoader(test_set, **params)
+    myModel = myModel.to(device)    
+    
+    if ProduceData:
+        for file_name in name:
+            test_file_name = "DataForTesting/" + file_name
+            # graphTest = np.load(test_file_name)
+            graph_files = glob.glob(test_file_name)
+    
+            test_set = GraphDataset(graph_files, scalers=MyScaler, fitted=True)
+
+
+            params = {'batch_size':1 , 'shuffle' : False, 'num_workers' : 4}
+            test_loader = DataLoader(test_set, **params)
     
     
-    evaluate_data(myModel, test_loader, MyScaler, name)
+            evaluate_data(myModel, test_loader, MyScaler, file_name)
     
     

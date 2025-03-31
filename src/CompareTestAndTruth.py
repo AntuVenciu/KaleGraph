@@ -47,7 +47,7 @@ if __name__ == "__main__":
     
     
     
-    filename = "DataTruthPredicted/file01030_event1_sectors0.npz_test_pred_truth.npz"
+    filename = fz"DataTruthPredicted/file01030_event{int(sys.argv[1])}_sectors0.npz_test_pred_truth.npz"
     
     
     plot_example(filename)
