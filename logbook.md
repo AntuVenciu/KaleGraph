@@ -192,6 +192,8 @@ Poi:
 Opzione a)  Sviluppare nuovo modello (ad esempio grafi eterogenei, cio' permette di vedere hit della CYLDCH e del TC come oggetti diverse e toglie le forzature delle feature sugli hit del TC) (questo nel caso in cui l'inefficienza si riveli non essere dovuta alla ricostruzione)
 Opzione b) Passare ai dati rumorosi e continuare.  
 
+Altra cosa importante: e' vero che usare 1000 nodi dia risultati lievemente migliori rispetto a 250/ 500, tuttavia questo si traduce potenzialmente in un tempo di inferenza piu' grande: bisogna tenere conto di cio'.  
+
 
 Side Quests:  
 1) Togliere gli hit spx e vedere qual'e' l'efficienza per ogni giro.  
