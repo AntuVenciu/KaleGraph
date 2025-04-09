@@ -1,5 +1,5 @@
 # Training Logbook
-65;7006;1c
+
 To be sure that work is done properly and that no effort is done in vain,
 we shall write a logbook about training tests, in view of finding optimal
 GNN architecture and training parameters.
