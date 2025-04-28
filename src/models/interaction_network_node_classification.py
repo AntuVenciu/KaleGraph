@@ -93,7 +93,7 @@ class InteractionNetwork(MessagePassing):
 
         #here make the input  for R2 model: node features + aggregation features after being transformed.
         m2 = torch.cat([x_tilde, aggr_out], dim = 1)
-
+        
         #Maybe is there a way to include also edge features ?
         m2 = m2.clone().to(torch.float32) # Double -> Float conversion
 

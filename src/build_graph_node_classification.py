@@ -284,7 +284,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
     else:
-        return X, np.empty((2,0)),np.empty((0,3)),np.array([])
+        return X, np.empty((2,0)),np.empty((0,3)),truth_hits
     # Evaluate edges truth label
     
     #correct for starting index.
@@ -532,6 +532,7 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
         
         # Build spx graph for this subgraph
         X_spx, edge_index_spx, edge_attr_spx , node_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
+        
         if(len(X_spx) != 0):
             X = np.concatenate((X_cdch, X_spx))
             edge_index =np.concatenate((Vec_edge_index_CDCH[i],edge_index_spx), axis = 1)
@@ -546,6 +547,8 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
         
         graph = {'X' : X, 'edge_index' : edge_index, 'edge_attr' : edge_attr, 'truth' : node_truth}
         graphs.append(graph)
+        
+        
 
     return graphs
 
@@ -633,7 +636,7 @@ def build_dataset(
                 #print("Starting to create graph for event ", ev)
                 
                 graphs = build_event_graphs(cdch_event, spx_event, wire_depth, layer_depth, cdch_spx_depth)
-    
+                
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
     
@@ -659,11 +662,11 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = True
+    PLOT = False
     TIME = True
     input_dir = "."
-    #output_dir = "../dataset"
+    output_dir = "Data/"
     file_ids = [f'0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
-    build_dataset(file_ids, input_dir=input_dir, output_dir=input_dir, time_it=TIME, plot_it=PLOT)
+    build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)
