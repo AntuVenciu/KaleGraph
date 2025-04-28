@@ -58,7 +58,7 @@ class InteractionNetwork(MessagePassing):
     A object model O acts to transform node features xi
     xi = O (xi, Sum R1 (eij))
     A second relational model R2 acts to classify edges (output size = max_n_turns)
-    w = R2 (eij, xi, xj)
+    w = R2 (eij, xi, xj) where we input edge features, receiver and sender node features.
     Using the variable T, the message passing can be performed T times.
     """
     def __init__(self,
@@ -70,10 +70,12 @@ class InteractionNetwork(MessagePassing):
                                                  flow='source_to_target')
         #build update function for edges
         self.R1 = RelationalModel(2 * node_features_dim + edge_features_dim, edge_features_dim, hidden_size)
+
         #build update function for nodes
         self.O = ObjectModel(node_features_dim + edge_features_dim, node_features_dim, hidden_size)
-        #build classifier function for edges: here change output dim from 1 to max_n_turns + 1 (accounting for the case 0 = noise)
-        self.R2 = RelationalModel(2 * node_features_dim + edge_features_dim, max_n_turns + 1, hidden_size)
+
+        #build classifier function for nodes: here change output dim from 1 to max_n_turns + 1 (accounting for the case 0 = noise)
+        self.R2 = RelationalModel(node_features_dim +edge_features_dim, max_n_turns + 1, hidden_size)
         
         self.E: Tensor = Tensor()
 
@@ -84,20 +86,22 @@ class InteractionNetwork(MessagePassing):
         # propagate_type: (x: Tensor, edge_attr: Tensor)
         x_tilde = x
         self.E = edge_attr
+        aggr_out = Tensor()
         for t in range(self.T):
-            x_tilde = self.propagate(edge_index, x=x_tilde, edge_attr=self.E, size=None)
-        #print(f"x_tilde shape = {x_tilde.shape}\nx shape = {x.shape}\nx_tilde = {x_tilde}\nx = {x}")
-        #print(f"E shape = {self.E.shape}\nedge attr shape = {edge_attr.shape}\nE = {self.E}\nedge attr = {edge_attr}")
+            x_tilde, aggr_out = self.propagate(edge_index, x=x_tilde, edge_attr=self.E, size=None)
         
 
-        #input of R2 relational model: receiver and sender node features +  edge features
-        m2 = torch.cat([x_tilde[edge_index[1]],
-                        x_tilde[edge_index[0]],
-                        self.E], dim=1)
+        #here make the input  for R2 model: node features + aggregation features after being transformed.
+        m2 = torch.cat([x_tilde, aggr_out], dim = 1)
+
+        #Maybe is there a way to include also edge features ?
         m2 = m2.clone().to(torch.float32) # Double -> Float conversion
-       
-        return self.R2(m2) #torch.sigmoid(self.R2(m2))
-        #return torch.sigmoid(self.R2(m2))
+
+
+        #we do not need to apply softmax since the CrossEntropyLoss already incorporates that.
+        return self.R2(m2) 
+
+
     def message(self, x_i, x_j, edge_attr):
         # x_i --> incoming
         # x_j --> outgoing
@@ -109,4 +113,4 @@ class InteractionNetwork(MessagePassing):
     def update(self, aggr_out, x):
         c = torch.cat([x, aggr_out], dim=1)
         c = c.clone().to(torch.float32) # Double -> Float conversion
-        return self.O(c) 
+        return self.O(c), aggr_out
