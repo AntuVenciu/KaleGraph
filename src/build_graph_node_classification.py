@@ -217,12 +217,14 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     # WARNING! Number of features of CDCH and SPX hit must be the same
 
     #print("Building SPX Graph")
-    feature_names = ['x0', 'y0', 'z0', 'time', 'ampl', 'isSPX']
+    feature_names = ['x0', 'y0', 'z0', 'time', 'theta', 'phi','ampl', 'isSPX']
     # Add a place holder for ampl. Set to 1. This is not a problem for SPX hits,
     # which have low noise compared to CDCH.
     # Add also a flag to distinguish between CDCH and SPX
     SPX_hits['ampl'] = np.float32(1.)
     SPX_hits['isSPX'] = np.float32(1.)
+    SPX_hits['theta'] = np.float32(0.)
+    SPX_hits['phi'] = np.float32(0.)
     SPX_hits = SPX_hits.reset_index(drop = True)    
     edge_index = []
     edge_attr = []
@@ -310,7 +312,7 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     # hit_id equivale dopo il reset_index al numero di riga di ogni entry.
     # Questo è quanto basta per creare il grafo
     # Aggiungi una flag per tenere conto se la hit appartiene all'SPX o alla CDCH
-    feature_names = ['x0', 'y0', 'ztimediff', 'time', 'ampl', 'isSPX']
+    feature_names = ['x0', 'y0', 'ztimediff', 'time', 'theta', 'phi', 'ampl', 'isSPX']
     sector_hits_placeholder['isSPX'] = np.float32(0.)
     X = sector_hits_placeholder[feature_names]
     
@@ -665,8 +667,8 @@ if __name__ == "__main__" :
     PLOT = False
     TIME = True
     input_dir = "."
-    output_dir = "Data/"
-    file_ids = [f'0{int(sys.argv[1])}']
+    output_dir = "DataWithNoise/"
+    file_ids = [f'Noise0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)

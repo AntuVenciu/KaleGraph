@@ -76,7 +76,7 @@ def plot(hits, edge_matrix, y):
 
     colors = ["pink", "blue"] # colors for CDCH and TC nodes
     fmts = ["o", "s"] # fmts for CDCH and TC nodes
-    signal_color = ['blue', 'orange', 'red', 'purple', 'green', 'brown', 'magenta', 'cyan', 'yellow', 'black'] # colors for different turns
+    signal_color = ['grey', 'blue', 'orange', 'red', 'purple', 'green', 'brown', 'magenta', 'cyan', 'yellow', 'black'] # colors for different turns
 
     # Plot nodes and edges
     # Watch out: if you load from a npz file, you can access only the normalized x and y coordinates..
@@ -99,7 +99,7 @@ def plot(hits, edge_matrix, y):
     
 
     for i, hit in enumerate(hits):
-        plt.errorbar(hit[0], hit[1], fmt=fmts[int(hit[5])], alpha=.6, markersize=10, color=signal_color[int(y[i]-1)])
+        plt.errorbar(hit[0], hit[1], fmt=fmts[int(hit[7])], alpha=.6, markersize=10, color=signal_color[int(y[i])])
 
 
     for k, e in enumerate(edge_matrix.T):
