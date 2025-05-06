@@ -17,8 +17,8 @@ from torch_geometric.loader import DataLoader
 from torch.optim.lr_scheduler import StepLR
 from torch.profiler import profile, record_function, ProfilerActivity
 
-from models.interaction_network_node_classification import InteractionNetwork
-from utils.dataset import GraphDataset
+from models.interaction_network_heterogeneous_node_classification import HeterogenousInteractionNetwork
+from utils.dataset_heterogeneous import HeterogeneousGraphDataset
 from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
@@ -44,9 +44,9 @@ def train(args, model, device, train_loader, optimizer, epoch):
         output = model(data.x,
                        data.edge_index,
                        data.edge_attr)
-        
+                       
         y, output = data.y.clone().to(torch.float32), output.clone().to(device)
-        
+
         # Have some problems here
         #if max(y.cpu().numpy()) > max_n_turns:
         #   continue
@@ -192,7 +192,7 @@ def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
             losses.append(loss.item())
 
             
-            if isFinalEpoch == True:  
+            if batch_idx == len(test_loader)-1 and isFinalEpoch == True:  
                 
                 # Trova gli ID dei grafi nel batch
                 unique_graph_ids = data.batch.unique().cpu().numpy()
@@ -216,15 +216,15 @@ def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
                     edge_attr_denormalized = torch.tensor(scalers['edge_attr'].inverse_transform(edge_attr), dtype=torch.float32).numpy()
                 
                     
-                    output_file = f'TruthWithNoise/{random_graph_id}_test_pred_truth.npz'
+                    output_file = f'DataTruthPredicted/{random_graph_id}_test_pred_truth.npz'
                     np.savez(output_file, 
                          X=X_denormalized,
                          edge_attr=edge_attr_denormalized,
                          edge_index=edge_index.numpy(),
-                         truth=y[node_mask].cpu().numpy(),
-                         predicted=torch.argmax(output[node_mask].cpu(), dim =1).numpy())
+                         truth=y[edge_mask].cpu().numpy(),
+                         predicted=torch.argmax(output[edge_mask].cpu(), dim =1).numpy())
             
-            
+                
     print('... test loss: {:.4f}\n'
           .format(np.mean(losses)))
     Confusion_mat = confusion_matrix(y_pred_test.cpu().numpy(), y_true_test.cpu().numpy())
@@ -273,8 +273,9 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "DataWithNoiseNodeClassification"
+    inputdir = "HeterogenousGraphData/"
     #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
     # Check that the dataset has already been created
@@ -284,40 +285,53 @@ def main():
         return
 
     # Limit while we wait for GPU training
-    graph_files = graph_files[30000:]
-    time_steps = 2
+    graph_files = graph_files[:]
+    time_steps = 2;
     # Split the dataset
     f_train = 0.75
     f_test = 0.15
-
+    #graph_files = graph_files[0:50000]
     partition = {'train': graph_files[: int(f_train * len(graph_files))],
                  'test':  graph_files[int(f_train * len(graph_files)) : int((f_train + f_test)*len(graph_files))],
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
     params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 4}
    
-    train_set = GraphDataset(partition['train'])
+    train_set = HeterogeneousGraphDataset(partition['train'])
     #train_set.plot(1)
     
     
 
     
     
-
+   
 
     
     
     
 
     # Set to the correct number of features
-    NUM_NODE_FEATURES = train_set.get_X_dim()
-    NUM_EDGE_FEATURES = train_set.get_edge_attr_dim()
+    NUM_NODE_FEATURES_CDCH = train_set.get_X_CDCH_dim()
+    NUM_NODE_FEATURES_SPX = train_set.get_X_SPX_dim()
     
-    print(NUM_NODE_FEATURES)
-    print(NUM_EDGE_FEATURES)
+    #all edges have 3 features.
+    NUM_EDGE_FEATURES = train_set.get_edge_attr_spx_dim()
+    
+    print(f'The number of cdch node features is : {NUM_NODE_FEATURES_CDCH}')
+    print(f'The number of spx node features is : {NUM_NODE_FEATURES_SPX}')
+    print(f'The number of edge features is : {NUM_EDGE_FEATURES}')
     #load model and scaler
     model = None
     scaler = None
+    #train_set.scale()
+    data = train_set.get(1)
+    
+    print(data.x_dict)
+    print(data.edge_index_dict)
+    print(list(data.edge_index_dict.keys())[0][0])
+    print(data.edge_index_dict.items())
+    
+    """
     if args.load_model:
         
         if not args.load_scaler:
@@ -350,12 +364,21 @@ def main():
         model = InteractionNetwork(args.hidden_size, NUM_NODE_FEATURES, NUM_EDGE_FEATURES, time_steps).to(device)
         train_set.scale()
         scalers = train_set.scalers
+        
+    """
     print(device)
+    """
+    model = HeterogenousInteractionNetwork(args.hidden_size, NUM_NODE_FEATURES_CDCH,NUM_NODE_FEATURES_SPX ,NUM_EDGE_FEATURES, time_steps).to(device)
+    train_set.scale()
+    scalers = train_set.scalers
+    
     torch.set_float32_matmul_precision('high')
 
     #now that we have a scaler, we can scale the test and val data according to it
-    test_set = GraphDataset(partition['test'], scalers=scalers, fitted=True)
-    val_set = GraphDataset(partition['val'], scalers=scalers, fitted=True)
+    test_set = HeterogeneousGraphDataset(partition['test'], scalers=scalers, fitted=True)
+    val_set = HeterogeneousGraphDataset(partition['val'], scalers=scalers, fitted=True)
+    
+    
     
     train_loader = DataLoader(train_set, **params)
     test_loader = DataLoader(test_set, **params)
@@ -379,11 +402,11 @@ def main():
      
     def lr_lambda(epoch):
         if epoch < 5:
-            return 5e-3  # LR normale (3e-3)
+            return 1  # LR normale (3e-3)
         elif epoch < 10:
-            return 3e-3 / args.lr  # Ridotto a 1e-3
+            return 1e-3 / args.lr  # Ridotto a 1e-3
         elif epoch < 20:
-            return 1e-3 / args.lr  # Ridotto a 3e-4
+            return 1e-4 / args.lr  # Ridotto a 3e-4
         elif epoch < 40:
             return 0.7e-4 / args.lr
       
@@ -441,26 +464,25 @@ def main():
             
     
     plt.legend()
-    plt.show()
     #plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     #plt.show()
     #Val_confusion_mat = Val_confusion_mat / Val_confusion_mat.sum(axis=1, keepdims=True)
     #Test_confusion_mat = Test_confusion_mat / Test_confusion_mat.sum(axis=1, keepdims=True)
-    labels = [ 'Noise','Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5', 'Turn 6']
+    labels = ['Noise', 'Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5', 'Turn 6']
     # Visualizza la matrice di confusione con un heatmap
     
     sns.heatmap(Val_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels)
-    plt.xlabel('True')
-    plt.ylabel('Predicted')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
     plt.title('Confusion Matrix')
-    plt.show()
+    #plt.show()
     
     sns.heatmap(Test_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels) 
-    plt.xlabel('True')
-    plt.ylabel('Predicted')
+    plt.xlabel('Predicted')
+    plt.ylabel('True')
     plt.title('Confusion Matrix')
     #plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
-    plt.show()
+    #plt.show()
 
     if args.save_model:
         torch.save({'epoch':args.epochs,
@@ -476,7 +498,7 @@ def main():
                     }, f"{args.hidden_size}model1.pth"
                    )
         joblib.dump(scalers, f"{args.hidden_size}scaler1.pkl")
-
+"""
 if __name__ == '__main__':
     # torch.set_num_threads(1)
     main()
