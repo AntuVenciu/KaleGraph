@@ -91,11 +91,11 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
 
 #[0,1,2,3,4,5,6,7,8,9,10,11],
 def split_cdch_sectors(cdch_hits,
-                       list_cdch_sectors=[
-                                          [11, 0, 1],
-                                          [1, 2, 3],
-                                          [3, 4, 5],
-                                          [5, 6, 7]
+                       list_cdch_sectors=[[11, 0, 1, 2, 3, 4, 5, 6, 7],
+                                          #[11, 0, 1],
+                                          #[1, 2, 3],
+                                          #[3, 4, 5],
+                                          #[5, 6, 7]
                                           ]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
@@ -560,8 +560,8 @@ def build_dataset(file_ids,
 
         for ev, event in enumerate(events):
             if(ev >=0):
-                if(ev > 72):
-                    break;
+                #if(ev > 72):
+                #    break;
                 mc_truth = event[0]
                 cdch_event = event[1]
                 spx_event = event[2]
@@ -581,7 +581,7 @@ def build_dataset(file_ids,
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
     
-                    output_filename = os.path.join(output_dir, f"{output_dir}/file{file_id}_event{ev}_sectors{sec}.npz")
+                    output_filename = os.path.join(output_dir, f"{output_dir}/noNoisefile{file_id}_event{ev}_sectors{sec}.npz")
     
                     np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
     
@@ -607,8 +607,8 @@ if __name__ == "__main__" :
     PLOT = False
     TIME = True
     input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
-    #output_dir = "../dataset"
-    file_ids = [f'0{int(sys.argv[1])}']
+    output_dir = input_dir
+    #file_ids = [f'0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
-    #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
+    file_ids = [f'0{int(sys.argv[1])}']
     build_dataset(file_ids, input_dir=input_dir, output_dir=input_dir, time_it=TIME, plot_it=PLOT)
