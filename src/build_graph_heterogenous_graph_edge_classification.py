@@ -729,7 +729,7 @@ def build_dataset(
                         """
                         Plot a graph
                         """
-                        from utils.plot_graph_heterogeneous_edge_classification import plot_Heterogenous_graph
+                        from utils.plot_graph_heterogeneous_edge_classification import plot_Heterogenous_graph_edge_classification
 
                         plot_Heterogenous_graph(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
                                                 graph['X_spx'], graph['edge_index_spx'], graph['truth_spx'],

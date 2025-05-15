@@ -27,7 +27,7 @@ def draw_radial_lines(min_radius, max_radius, num_lines, linewidth, color='black
 
 
 
-def plot_Heterogenous_graph(hits_cdch, edge_matrix_cdch, y_cdch, hits_spx, edge_matrix_spx, y_spx,edge_matrix_cdch_spx, y_cdch_spx ):
+def plot_Heterogenous_graph_edge_classification(hits_cdch, edge_matrix_cdch, y_cdch, hits_spx, edge_matrix_spx, y_spx,edge_matrix_cdch_spx, y_cdch_spx ):
     # Draw CDCH scheleton
     num_circles = 10
     min_radius = 17

@@ -12,15 +12,15 @@ from torch_geometric.data import Data, Dataset, HeteroData
 from torch_geometric.utils import to_undirected
 from torch_geometric.transforms import ToUndirected
 
-import build_graph_segmented as bg
-from utils import plot_graph_heterogeneous
 
 
 
 
 
 
-class HeterogeneousGraphDataset(Dataset):
+
+
+class HeterogeneousGraphDatasetNodeClassification(Dataset):
     def __init__(self,
                  file_names,
                  maxsize=-1,
@@ -29,7 +29,7 @@ class HeterogeneousGraphDataset(Dataset):
                  scalers=None,
                  fitted=False):
 
-        super(HeterogeneousGraphDataset, self).__init__(None, transform, pre_transform)
+        super(HeterogeneousGraphDatasetNodeClassification, self).__init__(None, transform, pre_transform)
         self.graph_files = file_names
         self.scalers = {'X_cdch': StandardScaler(), 'edge_attr_cdch': StandardScaler() ,
                         'X_spx': StandardScaler(), 'edge_attr_spx': StandardScaler(),  
@@ -96,7 +96,7 @@ class HeterogeneousGraphDataset(Dataset):
                 y_spx = graph['truth_spx']
                 edge_attr_cdch_spx = graph['edge_attr_cdch_spx']
                 edge_index_cdch_spx = graph['edge_index_cdch_spx']
-                y_cdch_spx = graph['truth_cdch_spx']
+
                 
                 
                 
@@ -124,7 +124,7 @@ class HeterogeneousGraphDataset(Dataset):
                 
                 edge_attr_cdch_spx = torch.from_numpy(edge_attr_cdch_spx).to(torch.float64)
                 edge_index_cdch_spx= torch.from_numpy(edge_index_cdch_spx).to(torch.int64)
-                y_cdch_spx = torch.from_numpy(y_cdch_spx).to(torch.long)
+
                 
                 
                 
@@ -145,6 +145,7 @@ class HeterogeneousGraphDataset(Dataset):
                 data['SPXHit', 'SPX_to_SPX_edge', 'SPXHit'].edge_index = edge_index_spx
                 data['CDCHHit', 'CDCH_to_CDCH_edge', 'CDCHHit'].edge_index = edge_index_cdch
                 data['CDCHHit', 'CDCH_to_SPX_edge', 'SPXHit'].edge_index = edge_index_cdch_spx
+                
                 data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_index = edge_index_cdch_spx
                 
                 data['SPXHit', 'SPX_to_SPX_edge', 'SPXHit'].edge_attr = edge_attr_spx
@@ -152,10 +153,10 @@ class HeterogeneousGraphDataset(Dataset):
                 data['CDCHHit', 'CDCH_to_SPX_edge', 'SPXHit'].edge_attr = edge_attr_cdch_spx
                 data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_attr = edge_attr_cdch_spx
                 
-                data['SPXHit', 'SPX_to_SPX_edge', 'SPXHit'].edge_label = y_spx
-                data['CDCHHit', 'CDCH_to_CDCH_edge', 'CDCHHit'].edge_label = y_cdch
-                data['CDCHHit', 'CDCH_to_SPX_edge', 'SPXHit'].edge_label = y_cdch_spx
-                data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_label = torch.zeros(len(y_cdch_spx))
+                data['SPXHit'].node_label = y_spx
+                data['CDCHHit'].node_label = y_cdch
+
+
                 
                 """
                 data = Data(x_cdch=x_cdch,
@@ -234,13 +235,13 @@ class HeterogeneousGraphDataset(Dataset):
         """
         import matplotlib.pyplot as plt
         
-        from utils.plot_graph_heterogeneous import plot_Heterogenous_graph
+        from utils.plot_graph_heterogeneous import plot_Heterogenous_graph_node_classification
 
         try:
             with np.load(self.graph_files[idx]) as graph:
-                plot_Heterogenous_graph(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
+                plot_Heterogenous_graph_node_classification(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
                                                 graph['X_spx'], graph['edge_index_spx'], graph['truth_spx'],
-                                                graph['edge_index_cdch_spx'],graph['truth_cdch_spx']
+                                                graph['edge_index_cdch_spx']
                                                )
             
         except FileNotFoundError:
