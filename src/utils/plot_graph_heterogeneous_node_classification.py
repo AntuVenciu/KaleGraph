@@ -1,0 +1,145 @@
+"""
+Plotting the 2D graph of hits based on the 'edgeMatrix.txt' file
+"""
+import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.cm import tab10
+from utils.tools import load_graph_npz
+
+import pandas as pd
+
+
+# Function to draw circles
+def draw_circle(radius, linewidth, color='black'):
+    circle = plt.Circle((0, 0), radius, color=color, fill=False, linewidth=linewidth)
+    plt.gca().add_patch(circle)
+
+# Function to draw radial lines
+def draw_radial_lines(min_radius, max_radius, num_lines, linewidth, color='black'):
+    for i in range(num_lines):
+        angle = i * (360 / num_lines)
+        x_min = min_radius * np.cos(np.radians(angle))
+        y_min = min_radius * np.sin(np.radians(angle))
+        x_max = max_radius * np.cos(np.radians(angle))
+        y_max = max_radius * np.sin(np.radians(angle))
+        plt.plot([x_min, x_max], [y_min, y_max], linewidth=linewidth, color=color)
+ 
+
+
+
+def plot_Heterogenous_graph_node_classification(hits_cdch, edge_matrix_cdch, y_cdch, hits_spx, edge_matrix_spx, y_spx,edge_matrix_cdch_spx ):
+    # Draw CDCH scheleton
+    num_circles = 10
+    min_radius = 17
+    max_radius = 25
+    delta_radius = (max_radius - min_radius) / num_circles
+
+    # Divide sectors with thinner radial lines
+    for i in range(12):
+        draw_radial_lines(min_radius, max_radius, 12, 0.25)
+
+    # Draw circles with varying radii and linewidths
+    for i in range(num_circles):
+        radius = min_radius + i * delta_radius
+        if i == 0 or i == num_circles - 1:
+            linewidth = 1.5
+        else:
+            linewidth = 0.5
+        draw_circle(radius, linewidth)
+    
+    # Load TC pixel geometry
+    pixel_geo = np.loadtxt("utils/spxGeometry.txt")
+    colors = ["pink", "blue"] # colors for CDCH and TC nodes
+    fmts = ["o", "s"] # fmts for CDCH and TC nodes
+    signal_color = ['grey','blue', 'orange', 'red', 'purple', 'green', 'brown', 'magenta', 'cyan', 'yellow', 'black'] # colors for different turns
+    
+    for i, hit in enumerate(hits_cdch):
+        plt.errorbar(hit[0], hit[1], fmt=fmts[0], alpha=.6, markersize=10, color=signal_color[int(y_cdch[i])])
+    for i, hit in enumerate(hits_spx):
+        plt.errorbar(hit[0], hit[1], fmt=fmts[1], alpha=.6, markersize=10, color=signal_color[int(y_spx[i])])
+
+    
+    x_min = 1000
+    y_min = 1000
+    x_max = -1000
+    y_max = -1000
+
+    for k, e in enumerate(edge_matrix_cdch.T):
+
+        # nodes ID
+        i = int(e[0])
+        j = int(e[1])
+
+        # Try to visualize from npz files
+        xi = hits_cdch[i, 0]
+        yi = hits_cdch[i, 1]
+        
+    
+        xj = hits_cdch[j, 0]
+        yj = hits_cdch[j, 1]
+        
+        
+        x_max = max(x_max, max(xi, xj))
+        x_min = min(x_min, min(xi, xj))
+        y_max = max(y_max, max(yi, yj))
+        y_min = min(y_min, min(yi, yj))
+        
+        
+        plt.plot([xi, xj], [yi, yj], color='grey', linewidth=0.5, linestyle='-.', alpha=.25)
+            
+    for k, e in enumerate(edge_matrix_spx.T):
+
+        # nodes ID
+        i = int(e[0])
+        j = int(e[1])
+
+        # Try to visualize from npz files
+        xi = hits_spx[i, 0]
+        yi = hits_spx[i, 1]
+        
+    
+        xj = hits_spx[j, 0]
+        yj = hits_spx[j, 1]
+        
+        
+        x_max = max(x_max, max(xi, xj))
+        x_min = min(x_min, min(xi, xj))
+        y_max = max(y_max, max(yi, yj))
+        y_min = min(y_min, min(yi, yj))
+        
+        
+        plt.plot([xi, xj], [yi, yj], color='grey', linewidth=0.5, linestyle='-.', alpha=.25)        
+            
+            
+    for k, e in enumerate(edge_matrix_cdch_spx.T):
+
+        # nodes ID
+        i = int(e[0])
+        j = int(e[1])
+        
+        # Try to visualize from npz files
+        xi = hits_cdch[i, 0]
+        yi = hits_cdch[i, 1]
+        
+    
+        xj = hits_spx[j, 0]
+        yj = hits_spx[j, 1]
+        
+        
+        x_max = max(x_max, max(xi, xj))
+        x_min = min(x_min, min(xi, xj))
+        y_max = max(y_max, max(yi, yj))
+        y_min = min(y_min, min(yi, yj))
+        
+        plt.plot([xi, xj], [yi, yj], color='grey', linewidth=0.5, linestyle='-.', alpha=.25)
+                
+    plt.draw()  # Ridisegna la figura mantenendo i punti già plottati
+
+    
+    plt.axis('off')
+    plt.axis('equal')
+    plt.xlim(x_min, x_max)
+    plt.ylim(y_min, y_max)
+    plt.title('Graph Nodes and Edges')
+    plt.show()
+

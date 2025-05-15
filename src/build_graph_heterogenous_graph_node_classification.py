@@ -294,17 +294,12 @@ def build_graph_spx(SPX_hits, index_start_at=0):
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
     else:
         return X, np.empty((2,0)),np.empty((0,3)),np.array([])
-    # Evaluate edges truth label
-    edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
+    # Evaluate node truth label
     
-    for k, e in enumerate(edge_index.T):
-            hit_i = int(e[0])
-            hit_j = int(e[1])
-            if(truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and (map_idx[nexthit_id[int(hit_i)]]==hit_j or map_idx[nexthit_id[int(hit_j)]]==hit_i)) :
-                edge_truth[k] = truth_hits[hit_i]
+    node_truth = SPX_hits['truth'].values
     
     
-    return X, edge_index, edge_attr, edge_truth
+    return X, edge_index, edge_attr, node_truth
 
 
 def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn):
@@ -357,67 +352,11 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
         return [],[],[],[]
     
     # Evaluate edges truth label 
-    edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
-    truth_hits = sector_hits_placeholder['truth'].values
-    nexthit_id = sector_hits_placeholder['next_hit_id'].values
-    
-    for k, e in enumerate(edge_index.T):
-        hit_i = int(e[0])
-        hit_j = int(e[1])
-        if nexthit_id[hit_i] in old_hits_id and nexthit_id[hit_j] in old_hits_id:
-            # La seconda condizione assicura la "direzionalità" del grafo
-            # Se manca una hit però questo porta ad un grafo disconnesso, invece potrebbe essere utile avere quella connessione
-            if truth_hits[hit_i] > 0 and truth_hits[hit_j] > 0 and ( map_abs_idx_sector_idx[int(nexthit_id[hit_i])]==hit_j or map_abs_idx_sector_idx[int(nexthit_id[hit_j])]==hit_i) :
-                edge_truth[k] = truth_hits[hit_i]
-            #if we have the last hit, the case is map_abs_idx_sector_idx[int(nexthit_id[hit_j])]] =-1, which is different from hit_i.
-        if(hit_j == len(sector_hits)-1) and (hit_i == len(sector_hits)-2):
-            edge_truth[k] = truth_hits[hit_i]
-    return X, edge_index, edge_attr, edge_truth           
-    
-def create_connection_cyldch_spx_last_hits(hits_spx, hits_cdch, sector_hits):
-    """
-    Here we are connecting the last cdch hit in a turn to, if there is any, the next hit of that turn in the spx. For all turns.
-    """
     
     
-    
-    #reset index ordering 
-    hits_spx = hits_spx.reset_index(drop = True)
-    hits_cdch = hits_cdch.reset_index(drop = True)
+    node_truth = sector_hits_placeholder['truth'].values
+    return X, edge_index, edge_attr, node_truth           
 
-    
-        
-        
-    #we do know that the last index of the cyldch is connected to the first in the TC: so let us see if the last hit of the cyldch is in the sector
-    # here ordering has not been done yet and also index reset of the sector_hit: this means that the indexes of the hits in the sector are equal to the index of the hits in hits_cdch. See if the last hit index 
-    # is in sector hit!
-    
-    
-    #take last index
-    index = hits_cdch.index.to_numpy()[-1]
-    
-    #if the hit is not in the sector, skip.    
-    if not np.isin(index,sector_hits.index.to_numpy()):
-        return -1, np.empty((2,0)),np.empty((0,3)),np.array([])
-    #if we got here, the index is in the sector, let us record the hit ID then
-    hitID = hits_cdch['hit_id'].to_numpy()[-1]
-    
-    sector_hits = sector_hits.reset_index(drop = True)    
-    hits_spx.index = hits_spx.index + len(sector_hits)
-    index = np.where(sector_hits['hit_id'] == hitID)[0][0] 
-    
-
-
-    dx = sector_hits['x0'].to_numpy()[index] - hits_spx['x0'].to_numpy()[0]
-    dy =sector_hits['y0'].to_numpy()[index] - hits_spx['y0'].to_numpy()[0]
-    dTime =sector_hits['time'].to_numpy()[index] - hits_spx['time'].to_numpy()[0]
-    
-    
-    edge_index = np.array([[index], [len(sector_hits)]])
-    edge_attr = np.array([[dx,dy,dTime]])
-    
-    edge_truth = np.array([sector_hits['truth'].to_numpy()[index]])
-    return index, edge_index, edge_attr, edge_truth
 
 def create_connection_between_cdchlayer_spx(hits_spx, sector_hits, All_CDCH_hits ,last_CDCH_layer_to_connect_spx = 1 ):
     #print("\t\t\t SPX hits = ", hits_spx)
@@ -426,7 +365,7 @@ def create_connection_between_cdchlayer_spx(hits_spx, sector_hits, All_CDCH_hits
     edge_attr = []
     edge_truth = []
 
-    index_last_hit, edge_index_last_hit, edge_attr_last_hit, edge_truth_last_hit = create_connection_cyldch_spx_last_hits(hits_spx, All_CDCH_hits, sector_hits)
+
     
     truth_cdch = sector_hits['truth'].values
     truth_spx = hits_spx['truth'].values
@@ -476,46 +415,10 @@ def create_connection_between_cdchlayer_spx(hits_spx, sector_hits, All_CDCH_hits
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
     else:
-        return [],[],[]
+        return [],[]
     
-    # The truth should be set to nturn and should not be the same for all CDCH and SPX connections
-    edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
 
-    for k, e in enumerate(edge_index.T):
-        # Retrieve truth for hits in CDCH and SPX
-        nturns_CDCH = 0
-        nturns_SPX = 0
-        i = int(e[0])
-        j = int(e[1])
-        #print(f"Connecting hits {i} and {j}.")
-
-        
-        if i < len(hitIDs_cdch):
-            nturns_CDCH = truth_cdch[i]
-        else:
-            nturns_SPX = truth_spx[i - len(hitIDs_cdch)]
-
-        if j < len(hitIDs_cdch):
-            nturns_CDCH = truth_cdch[j]
-        else:
-            nturns_SPX = truth_spx[j - len(hitIDs_cdch)]
-
-        # Set truth
-        """
-        if nturns_CDCH == nturns_SPX and nturns_CDCH > 0:
-            edge_truth[k] = nturns_SPX
-        else:
-            edge_truth[k] = 0
-        """
-        #if we have the last hit connection:
-        # This depends both on tuned depth and sector!
-
-        if(i == len(sector_hits)-1 and j == 0):
-
-            edge_truth[k] = edge_truth_last_hit[0]
-            
-
-    return edge_index, edge_attr, edge_truth
+    return edge_index, edge_attr
 
 
 def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx, same_layer_cdch_dist_conn):                  
@@ -524,17 +427,17 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
     X_sectors_CDCH = []
     edge_index_sectors_CDCH = []
     edge_attr_sectors_CDCH = []
-    edge_truth_sectors_CDCH = []
+    node_truth_sectors_CDCH = []
 
     edge_index_sectors_CDCH_spx = []
     edge_attr_sectors_CDCH_spx = []
-    edge_truth_sectors_CDCH_spx = []
+
    
     # Loop over sectors and create single graphs
     for i,sector_hits in enumerate(hits_sectors):
         #print(f"\t\tCDCH graph in Sector group {i}")
         #build connections inside the cdch
-        X_cdch, edge_index_cdch,edge_attr_cdch, edge_truth_cdch = build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn)
+        X_cdch, edge_index_cdch,edge_attr_cdch, node_truth_cdch = build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn)
         #print(f"\t\tNumber of cdch hits in this graph = {len(X_cdch)}")
 
         #if there are no hits in CDCH, skip sector
@@ -555,23 +458,22 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
         
         
         #create connections between cdch and spx
-        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, hits_cdch , depth_conn_cdch_spx )
+        edge_index_cdch_spx,edge_attr_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, hits_cdch , depth_conn_cdch_spx )
 
 
 
         #if there are no connections between spx and cdch, don't append result
         
         
-        
-        edge_index_sectors_CDCH_spx.append(edge_index_cdch_spx)
-        edge_attr_sectors_CDCH_spx.append(edge_attr_cdch_spx)
-        edge_truth_sectors_CDCH_spx.append(edge_truth_cdch_spx)
-        X_sectors_CDCH.append(X_cdch)
         edge_index_sectors_CDCH.append(edge_index_cdch)
         edge_attr_sectors_CDCH.append(edge_attr_cdch)
-        edge_truth_sectors_CDCH.append(edge_truth_cdch)    
+        node_truth_sectors_CDCH.append(node_truth_cdch)   
+        edge_index_sectors_CDCH_spx.append(edge_index_cdch_spx)
+        edge_attr_sectors_CDCH_spx.append(edge_attr_cdch_spx)
+        X_sectors_CDCH.append(X_cdch)
+         
 
-    return X_sectors_CDCH, edge_index_sectors_CDCH, edge_attr_sectors_CDCH, edge_truth_sectors_CDCH, edge_index_sectors_CDCH_spx, edge_attr_sectors_CDCH_spx, edge_truth_sectors_CDCH_spx
+    return X_sectors_CDCH, edge_index_sectors_CDCH, edge_attr_sectors_CDCH, node_truth_sectors_CDCH, edge_index_sectors_CDCH_spx, edge_attr_sectors_CDCH_spx
     
 def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_layer_cdch_dist_conn, tune_cdch_and_spx_last_layers_connection_depth, normalize=True):
     """
@@ -592,7 +494,7 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
     hits_cdch = hits_cdch.reset_index(drop = True)
     #build both spx and cdch connections
     #print("\tBuild CDCH and CDCH - SPX graphs...")
-    Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_edge_truth_CDCH, Vec_edge_index_CDCH_SPX,Vec_edge_attr_CDCH_SPX, Vec_edge_truth_CDCH_SPX  = build_CDCH_graphs(hits_cdch,
+    Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_node_truth_CDCH, Vec_edge_index_CDCH_SPX,Vec_edge_attr_CDCH_SPX  = build_CDCH_graphs(hits_cdch,
                                                                                                                                                                                   hits_spx,tune_cdch_connection_depth,
                                                                                                                                                                                   tune_cdch_and_spx_last_layers_connection_depth,
                                                                                                                                                                                   same_layer_cdch_dist_conn ) 
@@ -605,19 +507,19 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
         #hits_spx_subgraph['next_hit_id'] += N_hits_CDCH
         
         # Build spx graph for this subgraph
-        X_spx, edge_index_spx, edge_attr_spx , edge_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
+        X_spx, edge_index_spx, edge_attr_spx , node_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
         
         X_CDCH = X_cdch
         edge_index_cdch = Vec_edge_index_CDCH[i]
         edge_attr_cdch = Vec_edge_attr_CDCH[i]
-        edge_truth_cdch = Vec_edge_truth_CDCH[i]
+        node_truth_cdch = Vec_node_truth_CDCH[i]
         edge_index_cdch_spx =Vec_edge_index_CDCH_SPX[i]
         edge_attr_cdch_spx=Vec_edge_attr_CDCH_SPX[i]
-        edge_truth_cdch_spx =Vec_edge_truth_CDCH_SPX[i]
 
-        graph = {'X_cdch' : X_CDCH, 'edge_index_cdch' : edge_index_cdch, 'edge_attr_cdch' : edge_attr_cdch, 'truth_cdch' : edge_truth_cdch,
-                 'X_spx' : X_spx, 'edge_index_spx' : edge_index_spx, 'edge_attr_spx' : edge_attr_spx, 'truth_spx' : edge_truth_spx,
-                                  'edge_index_cdch_spx' : edge_index_cdch_spx, 'edge_attr_cdch_spx' : edge_attr_cdch_spx, 'truth_cdch_spx' : edge_truth_cdch_spx  
+
+        graph = {'X_cdch' : X_CDCH, 'edge_index_cdch' : edge_index_cdch, 'edge_attr_cdch' : edge_attr_cdch, 'truth_cdch' : node_truth_cdch,
+                 'X_spx' : X_spx, 'edge_index_spx' : edge_index_spx, 'edge_attr_spx' : edge_attr_spx, 'truth_spx' : node_truth_spx,
+                                  'edge_index_cdch_spx' : edge_index_cdch_spx, 'edge_attr_cdch_spx' : edge_attr_cdch_spx,  
                 }
         graphs.append(graph)
 
@@ -722,18 +624,18 @@ def build_dataset(
                     
                     np.savez(output_filename, X_cdch=graph['X_cdch'], edge_attr_cdch=graph['edge_attr_cdch'], edge_index_cdch=graph['edge_index_cdch'], truth_cdch=graph['truth_cdch'],
                                               X_spx=graph['X_spx'], edge_attr_spx=graph['edge_attr_spx'], edge_index_spx=graph['edge_index_spx'], truth_spx=graph['truth_spx'],
-                                                                    edge_attr_cdch_spx=graph['edge_attr_cdch_spx'], edge_index_cdch_spx=graph['edge_index_cdch_spx'], truth_cdch_spx=graph['truth_cdch_spx']
-                                       )
+                                                                    edge_attr_cdch_spx=graph['edge_attr_cdch_spx'], edge_index_cdch_spx=graph['edge_index_cdch_spx']
+                                                                    )
     
                     if plot_it:
                         """
                         Plot a graph
                         """
-                        from utils.plot_graph_heterogeneous_edge_classification import plot_Heterogenous_graph
+                        from utils.plot_graph_heterogeneous_node_classification import plot_Heterogenous_graph_node_classification
 
-                        plot_Heterogenous_graph(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
+                        plot_Heterogenous_graph_node_classification(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
                                                 graph['X_spx'], graph['edge_index_spx'], graph['truth_spx'],
-                                                graph['edge_index_cdch_spx'],graph['truth_cdch_spx']
+                                                graph['edge_index_cdch_spx']
                                                )
     
         if time_it:
@@ -748,6 +650,7 @@ if __name__ == "__main__" :
 
     PLOT = True
     TIME = True
+    #output_dir = "HeterogenousGraphData/"
     output_dir = "."
     input_dir = "DataWithNoise/"
     file_ids = [f'Noise0{int(sys.argv[1])}']

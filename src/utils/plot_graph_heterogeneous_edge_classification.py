@@ -8,6 +8,22 @@ from utils.tools import load_graph_npz
 
 import pandas as pd
 
+# Function to draw circles
+def draw_circle(radius, linewidth, color='black'):
+    circle = plt.Circle((0, 0), radius, color=color, fill=False, linewidth=linewidth)
+    plt.gca().add_patch(circle)
+
+# Function to draw radial lines
+def draw_radial_lines(min_radius, max_radius, num_lines, linewidth, color='black'):
+    for i in range(num_lines):
+        angle = i * (360 / num_lines)
+        x_min = min_radius * np.cos(np.radians(angle))
+        y_min = min_radius * np.sin(np.radians(angle))
+        x_max = max_radius * np.cos(np.radians(angle))
+        y_max = max_radius * np.sin(np.radians(angle))
+        plt.plot([x_min, x_max], [y_min, y_max], linewidth=linewidth, color=color)
+ 
+
 
 
 

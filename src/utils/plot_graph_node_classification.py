@@ -99,7 +99,8 @@ def plot(hits, edge_matrix, y):
     
 
     for i, hit in enumerate(hits):
-        plt.errorbar(hit[0], hit[1], fmt=fmts[int(hit[7])], alpha=.6, markersize=10, color=signal_color[int(y[i])])
+
+        plt.errorbar(hit[0], hit[1], fmt=fmts[round(hit[7])], alpha=.6, markersize=10, color=signal_color[int(y[i])])
 
 
     for k, e in enumerate(edge_matrix.T):

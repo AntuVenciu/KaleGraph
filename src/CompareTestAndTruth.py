@@ -50,10 +50,11 @@ if __name__ == "__main__":
     
     
     
-    
-    
-    
+        
     filename = f"TruthWithNoise/{int(sys.argv[1])}_test_pred_truth.npz"
+    
+    
+    #filename = f"TruthComparisonOldModel/{int(sys.argv[1])}_test_pred_truth.npz"
     
     
     plot_example(filename)

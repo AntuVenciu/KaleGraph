@@ -284,7 +284,11 @@ def main():
         return
 
     # Limit while we wait for GPU training
-    graph_files = graph_files[30000:]
+    #graph_files = graph_files[0:22500]
+    indexes = np.r_[np.arange(0,22500), np.arange(27000, len(graph_files))]
+    part1 = graph_files[0:22500]
+    part2 = graph_files[30000:len(graph_files)]
+    graph_files = np.concatenate([part1,part2])
     time_steps = 2
     # Split the dataset
     f_train = 0.75
@@ -379,13 +383,13 @@ def main():
      
     def lr_lambda(epoch):
         if epoch < 5:
-            return 5e-3  # LR normale (3e-3)
+            return 1  # LR normale (3e-3)
         elif epoch < 10:
-            return 3e-3 / args.lr  # Ridotto a 1e-3
+            return 1e-1   # Ridotto a 1e-3
         elif epoch < 20:
-            return 1e-3 / args.lr  # Ridotto a 3e-4
+            return 1e-2   # Ridotto a 3e-4
         elif epoch < 40:
-            return 0.7e-4 / args.lr
+            return 1e-3 
       
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
