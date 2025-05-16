@@ -214,7 +214,7 @@ def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
                     X_subgraph = data.x[node_mask].cpu()
                     X_denormalized = torch.tensor(scalers['X'].inverse_transform(X_subgraph), dtype=torch.float32).numpy()
                     edge_attr_denormalized = torch.tensor(scalers['edge_attr'].inverse_transform(edge_attr), dtype=torch.float32).numpy()
-                
+                    
                     
                     output_file = f'TruthWithNoise/{random_graph_id}_test_pred_truth.npz'
                     np.savez(output_file, 
@@ -273,7 +273,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "DataWithNoiseNodeClassification"
+    inputdir = "DataWithNoiseNodeClassificationWithMoreEdges"
     #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
@@ -282,13 +282,15 @@ def main():
     if len(graph_files) < 1:
         print("Dataset not loaded correctly") 
         return
-
+    #print(graph_files[29072])
     # Limit while we wait for GPU training
-    #graph_files = graph_files[0:22500]
-    indexes = np.r_[np.arange(0,22500), np.arange(27000, len(graph_files))]
-    part1 = graph_files[0:22500]
-    part2 = graph_files[30000:len(graph_files)]
-    graph_files = np.concatenate([part1,part2])
+    graph_files = graph_files[:]
+    #print(graph_files[0])
+    #indexes = np.r_[np.arange(0,22500), np.arange(27000, len(graph_files))]
+
+    #part1 = graph_files[0:29071]
+    #part2 = graph_files[29073:]
+    #graph_files = np.concatenate([part1,part2])
     time_steps = 2
     # Split the dataset
     f_train = 0.75

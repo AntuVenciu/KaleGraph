@@ -202,13 +202,24 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
             edge_index.append(pairs[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_edges)
             edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
             
-
+    
+    
     # Combine edge indices and attributes from all layers
     if len(edge_index) > 0:
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
+        
 
-    return edge_index, edge_attr
+    swapped = edge_index[::-1]
+    swapped_edge_Attr = edge_attr;
+    #edge_index = np.hstack(swapped)  # Shape: (2, total_num_edges)
+    #edge_attr = np.vstack(swapped_edge_Attr)  # Shape: (total_num_edges, 3)
+    np.set_printoptions(threshold =np.inf)
+    
+    e = np.concatenate((edge_index, swapped), axis = 1)
+    attr = np.concatenate((edge_attr, swapped_edge_Attr), axis =0)
+
+    return e, attr
 
 
 def build_graph_spx(SPX_hits, index_start_at=0):
@@ -664,10 +675,10 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = False
+    PLOT = True
     TIME = True
     input_dir = "DataWithNoise"
-    output_dir = "DataWithNoiseNodeClassification/"
+    output_dir = "DataWithNoiseNodeClassificationWithMoreEdges/"
     file_ids = [f'Noise0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]

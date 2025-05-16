@@ -93,10 +93,6 @@ def filter_hits(hits, feature, cut_low=-1e30, cut_high=1e30):
                                           [1, 2, 3],
                                           [3, 4, 5],
                                           [5, 6, 7]
-"""
-#[0,1,2,3,4,5,6,7,8,9,10,11],
-def split_cdch_sectors(cdch_hits,
-                       list_cdch_sectors=[                                              
                                           [11, 0, 1],
                                           [1, 2, 3],
                                           [3, 4, 5],
@@ -105,7 +101,13 @@ def split_cdch_sectors(cdch_hits,
                                           [4,5,6],
                                           [4,5],
                                           [5,6],
-                                           [6,7]                                                                     
+                                           [6,7]    
+                                          
+"""
+#[0,1,2,3,4,5,6,7,8,9,10,11],
+def split_cdch_sectors(cdch_hits,
+                       list_cdch_sectors=[[0,1,2,3,4,5,6,7,8,9,10,11]                                              
+                                                                                                           
                                           ]):
     """
     Divide cdch_hits into a list of hits belonging to segments of the detector, identified by CDCH sectors.
@@ -340,9 +342,25 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     # (2, n_edges) and (n_edges, n_features)
     edge_index, edge_attr = build_edges_alternate_layers(sector_hits_placeholder, depth_conn_cdch, same_layer_cdch_dist_conn)
 
+    
+    
+    
+
+    
+
+
     # Check that at least one graph exist
     if len(edge_index) < 1:
         return [],[],[],[]
+        
+        
+    #try to make bi directional edge and label it as noise, to propagate information.
+    swapped = edge_index[::-1]
+    swapped_edge_Attr = edge_attr;
+    #it is all noise! Just check whether this enhance performance.
+    swapped_edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)    
+    
+    
     
     # Evaluate edges truth label 
     edge_truth = np.zeros(len(edge_index.T), dtype=np.float32)
@@ -360,7 +378,22 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
             #if we have the last hit, the case is map_abs_idx_sector_idx[int(nexthit_id[hit_j])]] =-1, which is different from hit_i.
         if(hit_j == len(sector_hits)-1) and (hit_i == len(sector_hits)-2):
             edge_truth[k] = truth_hits[hit_i]
+    
+    
+    
+    
+    e = np.concatenate((edge_index, swapped), axis = 1)
+    attr = np.concatenate((edge_attr, swapped_edge_Attr), axis =0)
+    e_truth = np.concatenate((edge_truth, swapped_edge_truth), axis = 0)
+    
+    
+    
+    #put this if one wants less edges.
+    
     return X, edge_index, edge_attr, edge_truth           
+    
+    #put this for trying undirected edges
+    #return X, e, attr, e_truth           
     
 def create_connection_cyldch_spx_last_hits(hits_spx, hits_cdch, sector_hits):
     """
@@ -670,7 +703,7 @@ def build_dataset(
         events = load_data(file_id, input_dir=input_dir)
 
         for ev, event in enumerate(events):
-            if(ev >0):
+            if(ev >=0):
                 mc_truth = event[0]
                 cdch_event = event[1]
                 spx_event = event[2]
@@ -714,9 +747,10 @@ if __name__ == "__main__" :
 
     PLOT = False
     TIME = True
-    input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
-    #output_dir = "../dataset"
-    file_ids = [f'0{int(sys.argv[1])}']
+    #input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    input_dir = 'DataWithNoise'
+    output_dir = "DataWithNoiseEdgeClassificationWithMoreEdges/"
+    file_ids = [f'Noise0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)

@@ -216,7 +216,7 @@ def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
                     edge_attr_denormalized = torch.tensor(scalers['edge_attr'].inverse_transform(edge_attr), dtype=torch.float32).numpy()
                 
                     
-                    output_file = f'DataTruthPredicted/{random_graph_id}_test_pred_truth.npz'
+                    output_file = f'DataTruthPredictedEdgeClassification/{random_graph_id}_test_pred_truth.npz'
                     np.savez(output_file, 
                          X=X_denormalized,
                          edge_attr=edge_attr_denormalized,
@@ -273,7 +273,7 @@ def main():
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
 
-    inputdir = "Data4ConnCYLDCH7ConnSpxWithMCFeatures"
+    inputdir = "DataWithNoiseEdgeClassificationWithMoreEdges"
     #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
@@ -441,6 +441,7 @@ def main():
             
     
     plt.legend()
+    plt.show()
     #plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     #plt.show()
     #Val_confusion_mat = Val_confusion_mat / Val_confusion_mat.sum(axis=1, keepdims=True)
@@ -452,14 +453,14 @@ def main():
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
-    #plt.show()
+    plt.show()
     
     sns.heatmap(Test_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels) 
     plt.xlabel('Predicted')
     plt.ylabel('True')
     plt.title('Confusion Matrix')
     #plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
-    #plt.show()
+    plt.show()
 
     if args.save_model:
         torch.save({'epoch':args.epochs,
