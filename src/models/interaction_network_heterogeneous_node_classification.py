@@ -11,7 +11,8 @@ import torch_geometric.transforms as T
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.conv import HeteroConv
 from torch.nn import Sequential as Seq, Linear, ReLU, Sigmoid
-
+from torch_geometric.data import Data, Dataset, HeteroData
+from torch_scatter import scatter_add
 #We need to check what is the right number of turn. This information comes from the edges, not directly from hits.
 max_n_turns = 7
 
@@ -55,44 +56,39 @@ class ObjectModel(nn.Module):
 
 
 
-class HeterogenousInteractionNetwork(MessagePassing):
+class HeterogenousInteractionNetwork(nn.Module):
     def __init__(self,
                  hidden_size,
                  node_features_cdch_dim,
-                 edge_features_dim,
                  node_features_spx_dim,
+                 edge_features_dim,
                  time_steps=1):
-        super(InteractionNetwork, self).__init__(aggr='sum', 
-                                                 flow='source_to_target')
+        super().__init__()
         
         
         
         
         
         #build update function for edges        
-        self.R1 = HeteroConv({
-                             ('SPXHit', 'SPX_to_SPX_message', 'SPXHit'):RelationalModel(2 * node_features_spx_dim + edge_features_dim, hidden_size),
-                             ('CDCHHit', 'CDCH_to_CDCH_message', 'CDCHHit'):RelationalModel(2 * node_features_cdch_dim + edge_features_dim, hidden_size),
-                             ('CDCHHit', 'CDCH_to_SPX_message', 'SPXHit'):RelationalModel( node_features_cdch_dim +node_features_spx_dim+ edge_features_dim, hidden_size), 
-                             ('SPXHit', 'SPX_to_CDCH_message', 'CDCHHit'):RelationalModel( node_features_cdch_dim +node_features_spx_dim+ edge_features_dim, hidden_size) 
+        self.R1 = torch.nn.ModuleDict({
+                             'SPX_to_SPX_edge':RelationalModel(2 * node_features_spx_dim + edge_features_dim, edge_features_dim,hidden_size),
+                             'CDCH_to_CDCH_edge':RelationalModel(2 * node_features_cdch_dim + edge_features_dim, edge_features_dim,hidden_size),
+                             'CDCH_to_SPX_edge':RelationalModel( node_features_cdch_dim +node_features_spx_dim+ edge_features_dim,edge_features_dim, hidden_size), 
+                             'SPX_to_CDCH_edge':RelationalModel( node_features_cdch_dim +node_features_spx_dim+ edge_features_dim,edge_features_dim, hidden_size) 
                              })
         
         #build update function for nodes        
-        self.O = HeteroConv({
-                            ('SPXHit', 'SPX_to_SPX_message', 'SPXHit'):ObjectModel(node_features_spx_dim + edge_features_dim, node_features_spx_dim, hidden_size),
-                            ('CDCHHit', 'CDCH_to_CDCH_message', 'CDCHHit'):ObjectModel(node_features_cdch_dim + edge_features_dim, node_features_cdch_dim, hidden_size),
-                            ('CDCHHit', 'CDCH_to_SPX_message', 'SPXHit'):ObjectModel(node_features_cdch_dim + edge_features_dim, node_features_spx_dim, hidden_size) ,
-                            ('SPXHit', 'SPX_to_CDCH_message', 'CDCHHit'):ObjectModel(node_features_spx_dim + edge_features_dim, node_features_cdch_dim, hidden_size) 
+        self.O = torch.nn.ModuleDict({
+                            'SPXHit':ObjectModel(node_features_spx_dim + edge_features_dim, node_features_spx_dim, hidden_size),
+                            'CDCHHit':ObjectModel(node_features_cdch_dim + edge_features_dim, node_features_cdch_dim, hidden_size)
                             })
         
         
         
-        #build classifier function for edges: here change output dim from 1 to max_n_turns + 1 (accounting for the case 0 = noise)
-        self.R2 = HeteroConv({
-                             ('SPXHit', 'SPX_to_SPX_message', 'SPXHit'):RelationalModel(2 * node_features_spx_dim + edge_features_dim, max_n_turns + 1, hidden_size),
-                             ('CDCHHit', 'CDCH_to_CDCH_message', 'CDCHHit'):RelationalModel(2 * node_features_cdch_dim + edge_features_dim, max_n_turns + 1, hidden_size),
-                             ('CDCHHit', 'CDCH_to_SPX_message', 'SPXHit'):RelationalModel( node_features_cdch_dim +node_features_spx_dim+ edge_features_dim, max_n_turns + 1, hidden_size),
-                             ('SPXHit', 'SPX_to_CDCH_message', 'CDCHHit'):RelationalModel( node_features_cdch_dim +node_features_spx_dim+ edge_features_dim, max_n_turns + 1, hidden_size)                      
+        #build classifier function for nodes: here change output dim from 1 to max_n_turns + 1 (accounting for the case 0 = noise)
+        self.R2 = torch.nn.ModuleDict({
+                             'SPXHit':RelationalModel( node_features_spx_dim + edge_features_dim, max_n_turns + 1, hidden_size),
+                             'CDCHHit':RelationalModel(node_features_cdch_dim + edge_features_dim, max_n_turns + 1, hidden_size)
                              })
         
         
@@ -104,64 +100,43 @@ class HeterogenousInteractionNetwork(MessagePassing):
         
         
         
-    def forward(self, x_dict: dict, edge_index_dict: dict, edge_attr_dict: dict) -> dict:
+    def forward(self, data: HeteroData):
+        x_dict = data.x_dict
+        edge_index_dict = data.edge_index_dict
+        edge_attr_dict = {k: data[k].edge_attr for k in edge_index_dict}
 
-
-
-        # propagate_type: (x: Tensor, edge_attr: Tensor)
-        
-        
-        x_tilde = x_dict
-        self.E = edge_attr_dict
+        edge_feature_dim = 3
+        agg_msg_dict = {k: torch.zeros(x.shape[0], edge_feature_dim, device=x.device) for k, x in x_dict.items()}
+    
         for t in range(self.T):
-            for edge_type, edge_index in edge_index_dict.items():
+            # Step 1: compute messages (R1)
+            for (src_type, rel_type, dst_type), edge_index in edge_index_dict.items():
+                """
+                print(rel_type)
+                print(edge_index[1])
+                print(edge_index[0])
+                """
+                src_x = x_dict[src_type][edge_index[0]]
+                dst_x = x_dict[dst_type][edge_index[1]]
+                edge_attr = edge_attr_dict[(src_type, rel_type, dst_type)]
+                msg = self.R1[rel_type](torch.cat([src_x, dst_x, edge_attr], dim=-1))
+    
+                # Step 2: aggregate messages using scatter
+                dst_index = edge_index[1]
+                agg_msg_dict[dst_type] += scatter_add(msg, dst_index, dim=0, dim_size=x_dict[dst_type].size(0))
+    
+            # Step 3: O MLP update delle node features
+            updated_x = {}
+            for node_type in x_dict:
+                updated_x[node_type] = self.O[node_type](torch.cat([x_dict[node_type], agg_msg_dict[node_type]], dim=-1))
+    
+            x_dict = updated_x  # aggiorna per iterazioni successive
+    
+        # Step 4: R2 MLP per output finale
+        out_dict = {}
+        for node_type in x_dict:
+            out_dict[node_type] = self.R2[node_type](torch.cat([x_dict[node_type], agg_msg_dict[node_type]], dim=-1))
+    
+        return out_dict
             
-                starting_node_label, conn_type ,destination_node_label = edge_type
-                x_src = x_tilde[starting_node_label]
-                x_dst = x_tilde[destination_node_label]
-                edge_attr = self.E[edge_type]
-
-                # propagate
-                new_x_tilde[dst] = self.propagate(edge_index, x=x_src, edge_attr=edge_attr, size=None)
-
-        # update the values from the placeholder tensor
-        for key in new_x_tilde:
-            x_tilde[key] = new_x_tilde[key]
-
-        #so we update the node features and the edges featuees: let us now evaluate the output.
-        for edge_type, edge_index in edge_index_dict.items():
-        # concatenating features of the nodes and of the edge.
-            starting_node_label, conn_type ,destination_node_label = edge_type
-            m2 = torch.cat([x_tilde[destination_node_label],
-                            x_tilde[starting_node_label],
-                            self.E[edge_type]], dim=1)
-            m2 = m2.clone().to(torch.float32) # Double -> Float conversion
-            self.R2(x_tilde, )
-        # return the output of the last linear layer of R2: softmax is applied in the training by the CrossEntropy loss function
-        return self.R2(m2) 
-
-        
-    def message(self, x_i, x_j, edge_attr):
-        # x_i --> incoming
-        # x_j --> outgoing
-        m1 = torch.cat([x_i, x_j, edge_attr], dim=1)
-        m1 = m1.clone().to(torch.float32) # Double -> Float conversion
-        
-
-        # Compute attention scores
-        #attention_scores = self.attention_mlp(m1).clone().to(torch.float32)  # Shape: (num_edges, 1)
-        #attention_weights = torch.softmax(attention_scores, dim=0)  # Normalize across edges
-        
-        
-        #self.E = self.R1(m1)*attention_weights
-        self.E = self.R1(m1)
-        return self.E
-
-
-
-    def update(self, aggr_out, x):
-        c = torch.cat([x, aggr_out], dim=1)
-        c = c.clone().to(torch.float32) # Double -> Float conversion
-        return self.O(c) 
-        
-        
+                

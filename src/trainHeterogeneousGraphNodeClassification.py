@@ -18,7 +18,7 @@ from torch.optim.lr_scheduler import StepLR
 from torch.profiler import profile, record_function, ProfilerActivity
 
 from models.interaction_network_heterogeneous_node_classification import HeterogenousInteractionNetwork
-from utils.dataset_heterogeneous import HeterogeneousGraphDataset
+from utils.dataset_heterogeneous_node_classification import HeterogeneousGraphDatasetNodeClassification
 from build_graph_segmented import build_dataset
 from sklearn.metrics import confusion_matrix
 from sklearn.preprocessing import StandardScaler
@@ -32,89 +32,126 @@ from DataEvaluation import load_model
 # WARNING: THIS NUMBER HAS TO BE EQUAL TO INTERACTION_NETWORK.PY
 max_n_turns = 7
 
-def train(args, model, device, train_loader, optimizer, epoch):
+labels =labels_conf_mat = [0,1, 2, 3, 4, 5, 6, 7]
+
+def train(args, model, device, train_loader, optimizer, epoch, batch_size):
     model.train()
     epoch_t0 = time()
     losses = []
+    loss_fn = torch.nn.CrossEntropyLoss().to(device)
+    
+    virtual_batch_size = batch_size
+    accumulated_loss = 0.0
+    optimizer.zero_grad()
+    count = 0
+
     for batch_idx, data in enumerate(train_loader):
-
-        #t0 = time()
         data = data.to(device)
-        #output = model(data.x, data.edge_index, data.edge_attr)
-        output = model(data.x,
-                       data.edge_index,
-                       data.edge_attr)
-                       
-        y, output = data.y.clone().to(torch.float32), output.clone().to(device)
+        output_dict = model(data)
+        y_dict = data.node_label_dict
 
-        # Have some problems here
-        #if max(y.cpu().numpy()) > max_n_turns:
-        #   continue
-            
-            
-        #convert to one hot encoding.
-        y = y.to(torch.long)
-        y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
-        y_one_hot_encoding[torch.arange(len(y)), y] = 1
+        total_loss = 0.0
 
-        #check if there are any true edges in the graph. (
-        yn = y_one_hot_encoding.numpy()
-        if yn.sum() == 0:
+        for node_type in y_dict:
+            if node_type not in output_dict:
+                continue
+            y = y_dict[node_type].to(torch.long).to(device)
+            out = output_dict[node_type]
+
+            if y.numel() == 0 or out.numel() == 0:
+                continue
+
+            loss = loss_fn(out, y)
+            total_loss += loss
+
+        # Skip se non c'è loss (es. batch vuoto)
+        if total_loss == 0.0:
             continue
-        #weight loss function by a factor = 1 - N_i / N_TOT to count the unbalance between classes.      
-        #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
-        #class_weights = 1/ torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
-        #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
-        
-        
-        loss_fn = torch.nn.CrossEntropyLoss().to(device)
-        
-        loss = loss_fn(output, y)
-        #print(y)
-        #print(output)
-        loss.backward()
 
+        # Accumula loss normalizzata
+        loss_normalized = total_loss / virtual_batch_size
+        loss_normalized.backward()
+        accumulated_loss += total_loss.item()
+        count += 1
+
+        if count == virtual_batch_size:
+            optimizer.step()
+            optimizer.zero_grad()
+
+            if batch_idx % args.log_interval == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx, len(train_loader.dataset),
+                    100. * batch_idx / len(train_loader), accumulated_loss / virtual_batch_size))
+
+            losses.append(accumulated_loss / virtual_batch_size)
+            accumulated_loss = 0.0
+            count = 0
+
+    # gestisci l'ultimo batch se non è multiplo di virtual_batch_size
+    if count > 0:
         optimizer.step()
         optimizer.zero_grad()
-        #print(f"time for the whole batch = {t1 - t0:.3f} s")
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx, len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
-            if args.dry_run:
-                break
-        losses.append(loss.item())
+        losses.append(accumulated_loss / count)
 
-    print("...epoch time: {0}s".format(time()-epoch_t0))
-    #print("...epoch {}: train loss={}".format(epoch, losses))
+    print("...epoch time: {:.2f}s".format(time() - epoch_t0))
     return losses
+
 
 def validate(model, device, val_loader):
     model.eval()
     losses = []
     y_pred_val = torch.empty(0, dtype=torch.long)
     y_true_val = torch.empty(0, dtype=torch.long)
-    
+    y_pred_val_spx = torch.empty(0, dtype=torch.long)
+    y_true_val_spx = torch.empty(0, dtype=torch.long)
+    loss_fn = torch.nn.CrossEntropyLoss().to(device)
     with torch.no_grad():
         for batch_idx, data in enumerate(val_loader):
+            
+            
+            #t0 = time()
             data = data.to(device)
             #output = model(data.x, data.edge_index, data.edge_attr)
-            output = model(data.x,
-                           data.edge_index,
-                           data.edge_attr)
-            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32).to(device)
-            #perform one hot encoding trasformation.    
-            y = y.to(torch.long)
+            output_dict = model(data)
+         
+         
+            #now we have 
+        
+            y_dict = data.node_label_dict
+
             
-            #if max(y.cpu().numpy()) > max_n_turns:
-            #	continue
-            #if there are no edges.
-            #if y.numpy().sum() == 0:
-                #continue
+            total_loss = 0;        
+            for node_type in y_dict:
+                if node_type not in output_dict:
+                    continue  # nel caso il modello non produca output per questo tipo
+                y = y_dict[node_type].to(torch.long).to(device)
+                out = output_dict[node_type]
+    
+                if y.numel() == 0 or out.numel() == 0:
+                    continue  # skip se vuoto
+        
+                loss = loss_fn(out, y)
+                total_loss += loss
+        
+            #convert to one hot encoding.
+            y = y_dict['CDCHHit'].to(torch.long)
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
+
+            #check if there are any true edges in the graph. (
             yn = y_one_hot_encoding.numpy()
+            if yn.sum() == 0:
+                continue
             
+            
+            y_spx = y_dict['SPXHit'].to(torch.long)
+            y_one_hot_encoding_spx = torch.zeros(len(y_spx), max_n_turns+1)
+            y_one_hot_encoding_spx[torch.arange(len(y_spx)), y_spx] = 1
+
+            #check if there are any true edges in the graph. (
+            yn_spx = y_one_hot_encoding_spx.numpy()
+            if yn_spx.sum() == 0:
+                continue
             
             #print(torch.argmax(output, dim = 1))
             #print(torch.argmax(y_one_hot_encoding, dim = 1))
@@ -123,75 +160,103 @@ def validate(model, device, val_loader):
             #class_weights = 1/ torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
             #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
             
-            loss_fn = torch.nn.CrossEntropyLoss().to(device)
-            loss = loss_fn(output, y)
-            losses.append(loss.item())
+            
+            losses.append(total_loss.item())
             #let's build a confusion matrix for all turns.
 
 
             # we keep calculating those for all epochs since we need to keep account of accuracy throughout the training. At the moment we only see the last step to see if it converges to ill minimum.
-            y_pred_val = torch.cat((y_pred_val,torch.argmax(output.cpu(), dim = 1)), dim =0)
+            y_pred_val = torch.cat((y_pred_val,torch.argmax(output_dict['CDCHHit'].cpu(), dim = 1)), dim =0)
             y_true_val = torch.cat((y_true_val,torch.argmax(y_one_hot_encoding, dim = 1)), dim =0)
 
-            
+            y_pred_val_spx =torch.cat((y_pred_val_spx,torch.argmax(output_dict['SPXHit'].cpu(), dim = 1)), dim =0)
+            y_true_val_spx =torch.cat((y_true_val_spx,torch.argmax(y_one_hot_encoding_spx, dim = 1)), dim =0)
 
     print('... val loss: {:.4f}\n'
           .format(np.mean(losses)))
     #print(y_pred_val)
     y_pred_val_np = y_pred_val.cpu().numpy()
     y_true_val_np = y_true_val.cpu().numpy()
-    
-    Confusion_mat = confusion_matrix(y_pred_val_np, y_true_val_np)      
-          
+    y_pred_val_spx_np = y_pred_val_spx.cpu().numpy()
+    y_true_val_spx_np = y_true_val_spx.cpu().numpy()
+    print(y_pred_val_spx_np)
+    print(y_true_val_spx_np)
+    #print(y_pred_val_np)
+    #print(y_true_val_np)
+    Confusion_mat_cyldch = confusion_matrix(y_pred_val_np, y_true_val_np, labels =labels_conf_mat)      
+    Confusion_mat_spx = confusion_matrix(y_pred_val_spx_np, y_true_val_spx_np, labels =labels_conf_mat)  
 
-    return  Confusion_mat, losses 
+    return  Confusion_mat_cyldch, Confusion_mat_spx, losses 
 
 def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
     model.eval()
     losses, accs = [], []
     y_pred_test = torch.empty(0, dtype=torch.long)
     y_true_test = torch.empty(0, dtype=torch.long)
-    
+    y_pred_test_spx = torch.empty(0, dtype=torch.long)
+    y_true_test_spx = torch.empty(0, dtype=torch.long)
+    loss_fn = torch.nn.CrossEntropyLoss().to(device)
     with torch.no_grad():
         for batch_idx, data in enumerate(test_loader):
+            #t0 = time()
             data = data.to(device)
             #output = model(data.x, data.edge_index, data.edge_attr)
-            output = model(data.x,
-                           data.edge_index,
-                           data.edge_attr)
+            output_dict = model(data)
+         
+         
+            #now we have 
+        
+            y_dict = data.node_label_dict
 
             
-
-            y, output = data.y.clone().to(torch.float32), output.clone().to(torch.float32).to(device)
-            
-            #perform one hot encoding trasformation.
-            y = y.to(torch.long)
-            # Have some problems here
-            #if max(y.cpu().numpy()) > max_n_turns:
-            #    continue
+            total_loss = 0;        
+            for node_type in y_dict:
+                if node_type not in output_dict:
+                    continue  # nel caso il modello non produca output per questo tipo
+                y = y_dict[node_type].to(torch.long).to(device)
+                out = output_dict[node_type]
+    
+                if y.numel() == 0 or out.numel() == 0:
+                    continue  # skip se vuoto
+        
+                loss = loss_fn(out, y)
+                total_loss += loss
+        
+            #convert to one hot encoding.
+            y = y_dict['CDCHHit'].to(torch.long)
             y_one_hot_encoding = torch.zeros(len(y), max_n_turns+1)
             y_one_hot_encoding[torch.arange(len(y)), y] = 1
+
+            #check if there are any true edges in the graph. (
+            yn = y_one_hot_encoding.numpy()
+            if yn.sum() == 0:
+                continue
+            y_spx = y_dict['SPXHit'].to(torch.long)
+            y_one_hot_encoding_spx = torch.zeros(len(y_spx), max_n_turns+1)
+            y_one_hot_encoding_spx[torch.arange(len(y_spx)), y_spx] = 1
+
+            #check if there are any true edges in the graph. (
+            yn_spx = y_one_hot_encoding_spx.numpy()
+            if yn_spx.sum() == 0:
+                continue
+            #print(torch.argmax(output, dim = 1))
+            #print(torch.argmax(y_one_hot_encoding, dim = 1))
+            # weight loss function by a factor = N_i / N_TOT to count the unbalance between classes.      
+            #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
+            #class_weights = 1/ torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
+            #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
             
+            
+            losses.append(total_loss.item())
             #let's build a confusion matrix for all turns.
-            # we keep calculating those for all epochs since we need to keep account of accuracy throughout the training. At the moment we only see the last step to see if it converges to ill minimum.
-            y_pred_test = torch.cat((y_pred_test,torch.argmax(output.cpu(), dim = 1)), dim =0)
+            y_pred_test = torch.cat((y_pred_test,torch.argmax(output_dict['CDCHHit'].cpu(), dim = 1)), dim =0)
             y_true_test = torch.cat((y_true_test,torch.argmax(y_one_hot_encoding, dim = 1)), dim =0)
             
             
-            
-            yn = y_one_hot_encoding.numpy()
-            #class_weights = (yn.sum() - torch.sum(y_one_hot_encoding, dim = 0)*factor)/yn.sum()
+            y_pred_test_spx =torch.cat((y_pred_test_spx,torch.argmax(output_dict['SPXHit'].cpu(), dim = 1)), dim =0)
+            y_true_test_spx =torch.cat((y_true_test_spx,torch.argmax(y_one_hot_encoding_spx, dim = 1)), dim =0)
 
-            
-            #class_weights = 1 / torch.sqrt(torch.sum(y_one_hot_encoding, dim=0))
-            
-            #loss_fn = torch.nn.CrossEntropyLoss(weight=class_weights).to(device)
-            
-            loss_fn = torch.nn.CrossEntropyLoss().to(device)
-            loss = loss_fn(output, y)
-            losses.append(loss.item())
-
-            
+            """
             if batch_idx == len(test_loader)-1 and isFinalEpoch == True:  
                 
                 # Trova gli ID dei grafi nel batch
@@ -223,12 +288,14 @@ def test(model, device, test_loader, scalers,isFinalEpoch,thld=0.5):
                          edge_index=edge_index.numpy(),
                          truth=y[edge_mask].cpu().numpy(),
                          predicted=torch.argmax(output[edge_mask].cpu(), dim =1).numpy())
-            
+            """
                 
     print('... test loss: {:.4f}\n'
           .format(np.mean(losses)))
-    Confusion_mat = confusion_matrix(y_pred_test.cpu().numpy(), y_true_test.cpu().numpy())
-    return Confusion_mat, losses #np.mean(losses), np.mean(accs)
+    Confusion_mat_cyldch = confusion_matrix(y_pred_test.cpu().numpy(), y_true_test.cpu().numpy(), labels =labels_conf_mat)
+    Confusion_mat_spx = confusion_matrix(y_pred_test_spx.cpu().numpy(), y_true_test_spx.cpu().numpy(), labels =labels_conf_mat)  
+    #print(y_true_test)
+    return Confusion_mat_cyldch, Confusion_mat_spx , losses #np.mean(losses), np.mean(accs)
 
 def main():
 
@@ -264,7 +331,7 @@ def main():
     			help = 'For reloading a model scaler, to retrain.')
     args = parser.parse_args()
 
-    use_cuda = True
+    use_cuda = False
 
     device = torch.device('cuda:0' if use_cuda else 'cpu')
     torch.manual_seed(args.seed)
@@ -274,7 +341,8 @@ def main():
     test_kwargs = {'batch_size': args.test_batch_size}
 
     inputdir = "HeterogenousGraphData/"
-    #inputdir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
+    inputdir = "HeterogeneousGraphDataNoMix/"
+
     
     graph_files = glob.glob(os.path.join(inputdir, "*.npz"))
 
@@ -285,7 +353,7 @@ def main():
         return
 
     # Limit while we wait for GPU training
-    graph_files = graph_files[:]
+    graph_files = graph_files[:100]
     time_steps = 2;
     # Split the dataset
     f_train = 0.75
@@ -295,9 +363,9 @@ def main():
                  'test':  graph_files[int(f_train * len(graph_files)) : int((f_train + f_test)*len(graph_files))],
                  'val': graph_files[int((f_train + f_test)*len(graph_files)) : ]}
 
-    params = {'batch_size': args.batch_size, 'shuffle' : True, 'num_workers' : 4}
+    params = {'batch_size': 1, 'shuffle' : True, 'num_workers' : 4}
    
-    train_set = HeterogeneousGraphDataset(partition['train'])
+    train_set = HeterogeneousGraphDatasetNodeClassification(partition['train'])
     #train_set.plot(1)
     
     
@@ -326,12 +394,14 @@ def main():
     #train_set.scale()
     data = train_set.get(1)
     
-    print(data.x_dict)
-    print(data.edge_index_dict)
-    print(list(data.edge_index_dict.keys())[0][0])
-    print(data.edge_index_dict.items())
     
     """
+    print(data.x_dict)
+    print(data.x_dict['CDCHHit'])
+    print(data.x_dict['SPXHit'])
+    print(data.node_label_dict['CDCHHit'])
+    
+    
     if args.load_model:
         
         if not args.load_scaler:
@@ -367,16 +437,17 @@ def main():
         
     """
     print(device)
-    """
+    
     model = HeterogenousInteractionNetwork(args.hidden_size, NUM_NODE_FEATURES_CDCH,NUM_NODE_FEATURES_SPX ,NUM_EDGE_FEATURES, time_steps).to(device)
+    
     train_set.scale()
     scalers = train_set.scalers
     
     torch.set_float32_matmul_precision('high')
 
     #now that we have a scaler, we can scale the test and val data according to it
-    test_set = HeterogeneousGraphDataset(partition['test'], scalers=scalers, fitted=True)
-    val_set = HeterogeneousGraphDataset(partition['val'], scalers=scalers, fitted=True)
+    test_set = HeterogeneousGraphDatasetNodeClassification(partition['test'], scalers=scalers, fitted=True)
+    val_set = HeterogeneousGraphDatasetNodeClassification(partition['val'], scalers=scalers, fitted=True)
     
     
     
@@ -402,13 +473,13 @@ def main():
      
     def lr_lambda(epoch):
         if epoch < 5:
-            return 1  # LR normale (3e-3)
+            return 1e-1  # LR normale (3e-3)
         elif epoch < 10:
-            return 1e-3 / args.lr  # Ridotto a 1e-3
+            return 1e-3   # Ridotto a 1e-3
         elif epoch < 20:
-            return 1e-4 / args.lr  # Ridotto a 3e-4
+            return 1e-4   # Ridotto a 3e-4
         elif epoch < 40:
-            return 0.7e-4 / args.lr
+            return 0.7e-4 
       
 
     scheduler = optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
@@ -417,13 +488,13 @@ def main():
     for epoch in range(1, args.epochs + 1):
         print("---- Epoch {} ----".format(epoch))
 
-        train_loss = train(args, model, device, train_loader, optimizer, epoch)
-        Val_confusion_mat, val_loss= validate(model, device, val_loader)
+        train_loss = train(args, model, device, train_loader, optimizer, epoch, args.batch_size)
+        Val_confusion_mat_cyldch,Val_confusion_mat_spx, val_loss= validate(model, device, val_loader)
         isFinalEpoch = False
         if epoch == args.epochs :
             isFinalEpoch =  True
         #print('...optimal threshold', thld)
-        Test_confusion_mat, test_loss = test(model, device, test_loader, scalers,isFinalEpoch, thld = 0.5)
+        Test_confusion_mat_cyldch,Test_confusion_mat_spx, test_loss = test(model, device, test_loader, scalers,isFinalEpoch, thld = 0.5)
         scheduler.step()
 
         output['train_loss'].append(np.mean(train_loss))
@@ -464,6 +535,7 @@ def main():
             
     
     plt.legend()
+    plt.show()
     #plt.savifig(f"loss_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
     #plt.show()
     #Val_confusion_mat = Val_confusion_mat / Val_confusion_mat.sum(axis=1, keepdims=True)
@@ -471,18 +543,18 @@ def main():
     labels = ['Noise', 'Turn 1', 'Turn 2', 'Turn 3', 'Turn 4', 'Turn 5', 'Turn 6']
     # Visualizza la matrice di confusione con un heatmap
     
-    sns.heatmap(Val_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels)
+    sns.heatmap(Test_confusion_mat_cyldch, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels)
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.title('Confusion Matrix')
-    #plt.show()
+    plt.title('Test Confusion Matrix CYLDCH')
+    plt.show()
     
-    sns.heatmap(Test_confusion_mat, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels) 
+    sns.heatmap(Test_confusion_mat_spx, annot=True, fmt='.2f', cmap='Blues', xticklabels=labels, yticklabels=labels) 
     plt.xlabel('Predicted')
     plt.ylabel('True')
-    plt.title('Confusion Matrix')
+    plt.title('Test Confusion Matrix SPX')
     #plt.savefig(f"confusion_matrix_training_cuda_{time.struct_time()[0]}{time.struct_time()[1]}{time.struct_time()[2]}.png")
-    #plt.show()
+    plt.show()
 
     if args.save_model:
         torch.save({'epoch':args.epochs,
@@ -498,7 +570,7 @@ def main():
                     }, f"{args.hidden_size}model1.pth"
                    )
         joblib.dump(scalers, f"{args.hidden_size}scaler1.pkl")
-"""
+        
 if __name__ == '__main__':
     # torch.set_num_threads(1)
     main()

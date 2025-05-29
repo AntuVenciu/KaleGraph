@@ -90,24 +90,36 @@ class HeterogeneousGraphDatasetNodeClassification(Dataset):
                 edge_attr_cdch = graph['edge_attr_cdch']
                 edge_index_cdch = graph['edge_index_cdch']
                 y_cdch = graph['truth_cdch']
+                
                 x_spx = graph['X_spx']
                 edge_attr_spx = graph['edge_attr_spx']
                 edge_index_spx = graph['edge_index_spx']
                 y_spx = graph['truth_spx']
+                
+                
+                
+                
                 edge_attr_cdch_spx = graph['edge_attr_cdch_spx']
                 edge_index_cdch_spx = graph['edge_index_cdch_spx']
-
                 
                 
+                #print(edge_attr_spx)
                 
                 
                 # Apply scaling
                 if self._fitted:
+
                     x_cdch = self.scalers['X_cdch'].transform(x_cdch)
+                
                     edge_attr_cdch = self.scalers['edge_attr_cdch'].transform(edge_attr_cdch)
+                
                     x_spx = self.scalers['X_spx'].transform(x_spx)
-                    edge_attr_spx = self.scalers['edge_attr_spx'].transform(edge_attr_spx)
+                    if(edge_attr_spx.size != 0):                
+                        edge_attr_spx = self.scalers['edge_attr_spx'].transform(edge_attr_spx)
+                
                     edge_attr_cdch_spx = self.scalers['edge_attr_cdch_spx'].transform(edge_attr_cdch_spx)
+                    
+                    
                 else:
                     print("Data not scaled. You may want to check it.")
 
@@ -122,9 +134,18 @@ class HeterogeneousGraphDatasetNodeClassification(Dataset):
                 edge_index_spx = torch.from_numpy(edge_index_spx).to(torch.int64)
                 y_spx = torch.from_numpy(y_spx).to(torch.long)
                 
+                
+                edge_attr_spx_cdch = edge_attr_cdch_spx.copy()
+                edge_index_spx_cdch= edge_index_cdch_spx.copy()
+                edge_index_spx_cdch[[0,1]] = edge_index_spx_cdch[[1,0]]
+                 
                 edge_attr_cdch_spx = torch.from_numpy(edge_attr_cdch_spx).to(torch.float64)
                 edge_index_cdch_spx= torch.from_numpy(edge_index_cdch_spx).to(torch.int64)
-
+                
+                
+                
+                edge_attr_spx_cdch = torch.from_numpy(edge_attr_spx_cdch).to(torch.float64)
+                edge_index_spx_cdch= torch.from_numpy(edge_index_spx_cdch).to(torch.int64)
                 
                 
                 
@@ -145,13 +166,12 @@ class HeterogeneousGraphDatasetNodeClassification(Dataset):
                 data['SPXHit', 'SPX_to_SPX_edge', 'SPXHit'].edge_index = edge_index_spx
                 data['CDCHHit', 'CDCH_to_CDCH_edge', 'CDCHHit'].edge_index = edge_index_cdch
                 data['CDCHHit', 'CDCH_to_SPX_edge', 'SPXHit'].edge_index = edge_index_cdch_spx
-                
-                data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_index = edge_index_cdch_spx
+                #data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_index = edge_index_spx_cdch
                 
                 data['SPXHit', 'SPX_to_SPX_edge', 'SPXHit'].edge_attr = edge_attr_spx
                 data['CDCHHit', 'CDCH_to_CDCH_edge', 'CDCHHit'].edge_attr = edge_attr_cdch
                 data['CDCHHit', 'CDCH_to_SPX_edge', 'SPXHit'].edge_attr = edge_attr_cdch_spx
-                data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_attr = edge_attr_cdch_spx
+                #data['SPXHit', 'SPX_to_CDCH_edge', 'CDCHHit'].edge_attr = edge_attr_spx_cdch
                 
                 data['SPXHit'].node_label = y_spx
                 data['CDCHHit'].node_label = y_cdch

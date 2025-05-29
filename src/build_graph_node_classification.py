@@ -27,9 +27,9 @@ def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturi
     data_spx = np.loadtxt(f'{input_dir}/{file_id}_SPXHits.txt')
 
     # Define features
-    features_mc = ['event_id', 'xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
-    features_cdch = ['event_id', 'wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
-    features_spx = ['event_id', 'pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
+    features_mc = ['event_id','sevid', 'xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
+    features_cdch = ['event_id', 'sevid','wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
+    features_spx = ['event_id', 'sevid','pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
 
     # Create DataFrames
     df_mc_full = pd.DataFrame(data_mc, columns=features_mc)
@@ -228,7 +228,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     # WARNING! Number of features of CDCH and SPX hit must be the same
 
     #print("Building SPX Graph")
-    feature_names = ['x0', 'y0', 'z0', 'time', 'theta', 'phi','ampl', 'isSPX']
+    feature_names = ['x0', 'y0', 'z0', 'time', 'theta', 'phi','ampl', 'isSPX','sevid']
     # Add a place holder for ampl. Set to 1. This is not a problem for SPX hits,
     # which have low noise compared to CDCH.
     # Add also a flag to distinguish between CDCH and SPX
@@ -323,7 +323,7 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
     # hit_id equivale dopo il reset_index al numero di riga di ogni entry.
     # Questo è quanto basta per creare il grafo
     # Aggiungi una flag per tenere conto se la hit appartiene all'SPX o alla CDCH
-    feature_names = ['x0', 'y0', 'ztimediff', 'time', 'theta', 'phi', 'ampl', 'isSPX']
+    feature_names = ['x0', 'y0', 'ztimediff', 'time', 'theta', 'phi', 'ampl', 'isSPX', 'sevid']
     sector_hits_placeholder['isSPX'] = np.float32(0.)
     X = sector_hits_placeholder[feature_names]
     
@@ -573,7 +573,7 @@ def build_dataset(
     plot_it=False,
     wire_depth=4,
     layer_depth=3,
-    cdch_spx_depth=2,
+    cdch_spx_depth=4,
 ):
     """
     Builds graph datasets from a set of event files and saves them as *.npz files.
@@ -661,8 +661,8 @@ def build_dataset(
                         """
                         Plot a graph
                         """
-                        from utils.plot_graph_node_classification import plot
-    
+                        from utils.plot_graph_node_classification import plot, plot_only_sev_id
+                        #plot_only_sev_id(graph['X'], graph['edge_index'], graph['truth'], 27)
                         plot(graph['X'], graph['edge_index'], graph['truth'])
     
         if time_it:
@@ -677,9 +677,9 @@ if __name__ == "__main__" :
 
     PLOT = True
     TIME = True
-    input_dir = "DataWithNoise"
-    output_dir = "DataWithNoiseNodeClassificationWithMoreEdges/"
-    file_ids = [f'Noise0{int(sys.argv[1])}']
+    input_dir = "RawDataWithNoise/"
+    output_dir = "."
+    file_ids = [f'NoiseB{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)

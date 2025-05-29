@@ -28,9 +28,9 @@ def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturi
     data_spx = np.loadtxt(f'{input_dir}/{file_id}_SPXHits.txt')
 
     # Define features
-    features_mc = ['event_id', 'xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
+    features_mc = ['event_id','xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
     #new_features_cdch = ['event_id', 'wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl1','ampl2', 'sigmaZ', 'truth', 'hit_id', 'next_hit_id']
-    features_cdch = ['event_id', 'wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
+    features_cdch = ['event_id','wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
     features_spx = ['event_id', 'pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
 
     # Create DataFrames
@@ -212,8 +212,18 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
     if len(edge_index) > 0:
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
+    swapped = edge_index[::-1]
+    swapped_edge_Attr = edge_attr;
+    #edge_index = np.hstack(swapped)  # Shape: (2, total_num_edges)
+    #edge_attr = np.vstack(swapped_edge_Attr)  # Shape: (total_num_edges, 3)
+    np.set_printoptions(threshold =np.inf)    
+    e = np.concatenate((edge_index, swapped), axis = 1)
+    attr = np.concatenate((edge_attr, swapped_edge_Attr), axis =0)
 
-    return edge_index, edge_attr
+    return e, attr
+
+
+    #return edge_index, edge_attr
 
 
 def build_graph_spx(SPX_hits, index_start_at=0):
@@ -595,7 +605,7 @@ def build_dataset(
         events = load_data(file_id, input_dir=input_dir)
 
         for ev, event in enumerate(events):
-            if ev >= 0:
+            if ev >= 500:
                 mc_truth = event[0]
                 cdch_event = event[1]
                 spx_event = event[2]
@@ -648,11 +658,11 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = True
+    PLOT = False
     TIME = True
-    #output_dir = "HeterogenousGraphData/"
-    output_dir = "."
-    input_dir = "DataWithNoise/"
+    output_dir = "HeterogeneousGraphDataNoMix/"
+    #output_dir = "."
+    input_dir = "RawDataWithNoise"
     file_ids = [f'Noise0{int(sys.argv[1])}']
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)
     	    
