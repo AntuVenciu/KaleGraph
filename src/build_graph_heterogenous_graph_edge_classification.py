@@ -132,7 +132,7 @@ def split_cdch_sectors(cdch_hits,
     ]
     return hits_splitted
 
-def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_same_layer=3 ):
+def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adjacent_sector_depth = 2):
     """
     We select all edges connecting
     a hit on layer i to a hit on layer i + n_successive_layer.
@@ -155,7 +155,7 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
 
         for j, hitID_1 in enumerate(hitIDs):
             for k, hitID_2 in enumerate(hitIDs):
-                if k > j and abs(wireIDs[j] - wireIDs[k]) <= distance_same_layer:
+                if k > j and abs(wireIDs[j] - wireIDs[k]) <= wire_depth:
                     same_layer_pairs.append((hitID_1, hitID_2))
         
         # Compute edge attributes (dx, dy, dt) for same-layer pairs
@@ -178,7 +178,7 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
         
         if layer == 9:
             break  # Stop at the last layer
-        for n in range(1,n_successive_layer+1):
+        for n in range(1,layer_depth+1):
             if(layer+n > 9):
                 break
          
@@ -196,15 +196,21 @@ def build_edges_alternate_layers(cdch_hits,  n_successive_layer = 1,distance_sam
             pairs.columns = ['hit_id_a', 'hit_id_b']
 
             # Compute edge attributes (dx, dy, dt)
-            hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_a', right_on='hit_id')
-            hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time']], left_on='hit_id_b', right_on='hit_id', suffixes=('_1', '_2'))
+            hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time', 'wire_id']], left_on='hit_id_a', right_on='hit_id')
+            hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time', 'wire_id']], left_on='hit_id_b', right_on='hit_id', suffixes=('_1', '_2'))
+    
+    
+            hits_pairs['sector_1'] = hits_pairs['wire_id_1'] % 192 // 16
+            hits_pairs['sector_2'] = hits_pairs['wire_id_2'] % 192 // 16
+            hits_pairs = hits_pairs[np.abs(hits_pairs['sector_1'] - hits_pairs['sector_2']) <= adjacent_sector_depth]
+            
     
             dx = hits_pairs['x0_2'] - hits_pairs['x0_1']
             dy = hits_pairs['y0_2'] - hits_pairs['y0_1']
             dt = hits_pairs['time_2'] - hits_pairs['time_1']
 
             # Append results to the edge list
-            edge_index.append(pairs[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_edges)
+            edge_index.append(hits_pairs[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_edges)
             edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
             
 
@@ -307,7 +313,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     return X, edge_index, edge_attr, edge_truth
 
 
-def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn):
+def build_graph_cdch(hits_cdch, sector_hits, layer_depth, wire_depth, adjacent_sector_depth):
     # X = (n_hits, n_features)
     #feature_names = ['x0', 'y0', 'ztimediff', 'time', 'ampl']
     # Warning! Number of features of CDCH and SPX hit must be the same
@@ -350,7 +356,7 @@ def build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_di
 
     # edge index and edge attributes
     # (2, n_edges) and (n_edges, n_features)
-    edge_index, edge_attr = build_edges_alternate_layers(sector_hits_placeholder, depth_conn_cdch, same_layer_cdch_dist_conn)
+    edge_index, edge_attr = build_edges_alternate_layers(sector_hits_placeholder, layer_depth, wire_depth, adjacent_sector_depth)
 
     # Check that at least one graph exist
     if len(edge_index) < 1:
@@ -518,7 +524,7 @@ def create_connection_between_cdchlayer_spx(hits_spx, sector_hits, All_CDCH_hits
     return edge_index, edge_attr, edge_truth
 
 
-def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx, same_layer_cdch_dist_conn):                  
+def build_CDCH_graphs(hits_cdch, hits_spx, layer_depth, cdch_spx_depth, wire_depth, adjacent_sector_depth):                  
     #print("\t\tBuilding the CDCH graphs")
     hits_sectors = split_cdch_sectors(hits_cdch)   
     X_sectors_CDCH = []
@@ -534,7 +540,7 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
     for i,sector_hits in enumerate(hits_sectors):
         #print(f"\t\tCDCH graph in Sector group {i}")
         #build connections inside the cdch
-        X_cdch, edge_index_cdch,edge_attr_cdch, edge_truth_cdch = build_graph_cdch(hits_cdch, sector_hits, depth_conn_cdch, same_layer_cdch_dist_conn)
+        X_cdch, edge_index_cdch,edge_attr_cdch, edge_truth_cdch = build_graph_cdch(hits_cdch, sector_hits, layer_depth, wire_depth,adjacent_sector_depth )
         #print(f"\t\tNumber of cdch hits in this graph = {len(X_cdch)}")
 
         #if there are no hits in CDCH, skip sector
@@ -555,7 +561,7 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
         
         
         #create connections between cdch and spx
-        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, hits_cdch , depth_conn_cdch_spx )
+        edge_index_cdch_spx,edge_attr_cdch_spx, edge_truth_cdch_spx = create_connection_between_cdchlayer_spx(hits_spx_subgraph, sector_hits, hits_cdch , cdch_spx_depth )
 
 
 
@@ -573,7 +579,7 @@ def build_CDCH_graphs(hits_cdch, hits_spx, depth_conn_cdch, depth_conn_cdch_spx,
 
     return X_sectors_CDCH, edge_index_sectors_CDCH, edge_attr_sectors_CDCH, edge_truth_sectors_CDCH, edge_index_sectors_CDCH_spx, edge_attr_sectors_CDCH_spx, edge_truth_sectors_CDCH_spx
     
-def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_layer_cdch_dist_conn, tune_cdch_and_spx_last_layers_connection_depth, normalize=True):
+def build_event_graphs(hits_cdch, hits_spx, layer_depth, wire_depth, cdch_spx_depth,adjacent_sector_depth, normalize=True):
     """
     Build final graph from CDCH and SPX.
     Input:
@@ -593,9 +599,11 @@ def build_event_graphs(hits_cdch, hits_spx, tune_cdch_connection_depth, same_lay
     #build both spx and cdch connections
     #print("\tBuild CDCH and CDCH - SPX graphs...")
     Vec_X_sector_CDCH, Vec_edge_index_CDCH, Vec_edge_attr_CDCH, Vec_edge_truth_CDCH, Vec_edge_index_CDCH_SPX,Vec_edge_attr_CDCH_SPX, Vec_edge_truth_CDCH_SPX  = build_CDCH_graphs(hits_cdch,
-                                                                                                                                                                                  hits_spx,tune_cdch_connection_depth,
-                                                                                                                                                                                  tune_cdch_and_spx_last_layers_connection_depth,
-                                                                                                                                                                                  same_layer_cdch_dist_conn ) 
+                                                                                                                                                                                  hits_spx,
+                                                                                                                                                                                  layer_depth,
+                                                                                                                                                                                  cdch_spx_depth,
+                                                                                                                                                                                  wire_depth,
+                                                                                                                                                                                  adjacent_sector_depth ) 
 
     for i, X_cdch in enumerate(Vec_X_sector_CDCH):
         
@@ -629,10 +637,10 @@ def build_dataset(
     output_dir="./",
     time_it=False,
     plot_it=False,
-    wire_depth=4,
-    layer_depth=3,
+    wire_depth=5,
+    layer_depth=4,
     cdch_spx_depth=2,
-    
+    adjacent_sector_depth =2
 ):
 
 
@@ -708,7 +716,7 @@ def build_dataset(
                 # 5) depth_conn_cdch_spx, this is to be tuned: sets how deep in the cdch connection are made with spx hits: ex 1 means only closest layer.
                 #print("Starting to create graph for event ", ev)
                 
-                graphs = build_event_graphs(cdch_event, spx_event, wire_depth, layer_depth, cdch_spx_depth)
+                graphs = build_event_graphs(cdch_event, spx_event, layer_depth, wire_depth,cdch_spx_depth, adjacent_sector_depth)
     
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
@@ -731,7 +739,7 @@ def build_dataset(
                         """
                         from utils.plot_graph_heterogeneous_edge_classification import plot_Heterogenous_graph_edge_classification
 
-                        plot_Heterogenous_graph(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
+                        plot_Heterogenous_graph_edge_classification(graph['X_cdch'], graph['edge_index_cdch'], graph['truth_cdch'],
                                                 graph['X_spx'], graph['edge_index_spx'], graph['truth_spx'],
                                                 graph['edge_index_cdch_spx'],graph['truth_cdch_spx']
                                                )
@@ -746,10 +754,10 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = True
+    PLOT = False
     TIME = True
-    output_dir = "."
-    input_dir = "DataWithNoise/"
+    output_dir = "HeterogenousGraphDataEdgeClassification/"
+    input_dir = "RawDataWithNoise/"
     file_ids = [f'Noise0{int(sys.argv[1])}']
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)
     	    
