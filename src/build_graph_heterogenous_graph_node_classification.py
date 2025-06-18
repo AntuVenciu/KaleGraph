@@ -171,7 +171,7 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3, adjac
             dy_same = same_layer_hits_pairs['y0_2'] - same_layer_hits_pairs['y0_1']
             dt_same = same_layer_hits_pairs['time_2'] - same_layer_hits_pairs['time_1']
 
-            edge_index.append(same_layer_pairs.values.T)  # Shape: (2, num_same_layer_edges)
+            edge_index.append(same_layer_hits_pairs[['hit_id_1', 'hit_id_2']].values.T)  # Shape: (2, num_same_layer_edges)
             edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
 
         # **Alternate-layer edges**
@@ -220,11 +220,9 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3, adjac
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
     swapped = edge_index[::-1]
     swapped_edge_Attr = edge_attr;
-    edge_index = np.hstack(swapped)  # Shape: (2, total_num_edges)
-    edge_attr = np.vstack(swapped_edge_Attr)  # Shape: (total_num_edges, 3)
-    np.set_printoptions(threshold =np.inf)    
+    
     e = np.concatenate((edge_index, swapped), axis = 1)
-    attr = np.concatenate((edge_attr, swapped_edge_Attr), axis =0)
+    attr = np.concatenate((edge_attr, -swapped_edge_Attr), axis =0)
 
     return e, attr
 
@@ -521,8 +519,7 @@ def build_event_graphs(hits_cdch, hits_spx, layer_depth, wire_depth, cdch_spx_de
         
         N_hits_CDCH = len(X_cdch)
         hits_spx_subgraph = hits_spx.copy()
-        #hits_spx_subgraph['hit_id']  += N_hits_CDCH
-        #hits_spx_subgraph['next_hit_id'] += N_hits_CDCH
+        
         
         # Build spx graph for this subgraph
         X_spx, edge_index_spx, edge_attr_spx , node_truth_spx= build_graph_spx(hits_spx_subgraph, index_start_at=N_hits_CDCH)
@@ -542,6 +539,54 @@ def build_event_graphs(hits_cdch, hits_spx, layer_depth, wire_depth, cdch_spx_de
         graphs.append(graph)
 
     return graphs
+
+def TestGraph(graph):
+
+
+
+    e_i_cdch_cdch = graph['edge_index_cdch']
+    e_a_cdch_cdch = graph['edge_attr_cdch'] 
+    x_cdch = graph['X_cdch']
+    x_spx =  graph['X_spx']
+    ihit1_cdch_cdch = e_i_cdch_cdch[0]
+    ihit2_cdch_cdch = e_i_cdch_cdch[1]
+    
+    cond1 = np.abs(x_cdch[ihit2_cdch_cdch][:,0]-x_cdch[ihit1_cdch_cdch][:,0] - e_a_cdch_cdch[:,0])<1e-3
+    cond2 = np.abs(x_cdch[ihit2_cdch_cdch][:,1]-x_cdch[ihit1_cdch_cdch][:,1] - e_a_cdch_cdch[:,1])<1e-3
+    cond3 = np.abs(x_cdch[ihit2_cdch_cdch][:,3]-x_cdch[ihit1_cdch_cdch][:,3] - e_a_cdch_cdch[:,2])<1e-3
+
+    if not cond1.all() &cond2.all() & cond3.all():
+        raise ValueError("Le feature degli edges cdch-cdch non corrispondono!")
+
+
+
+    e_i_spx_spx = graph['edge_index_spx']
+    e_a_spx_spx = graph['edge_attr_spx'] 
+    ihit1_spx_spx = e_i_spx_spx[0]
+    ihit2_spx_spx = e_i_spx_spx[1]
+    
+    cond1 = np.abs(x_spx[ihit2_spx_spx][:,0]-x_spx[ihit1_spx_spx][:,0] - e_a_spx_spx[:,0])<1e-3
+    cond2 = np.abs(x_spx[ihit2_spx_spx][:,1]-x_spx[ihit1_spx_spx][:,1] - e_a_spx_spx[:,1])<1e-3
+    cond3 = np.abs(x_spx[ihit2_spx_spx][:,3]-x_spx[ihit1_spx_spx][:,3] - e_a_spx_spx[:,2])<1e-3
+    if not cond1.all() &cond2.all() & cond3.all():
+        raise ValueError("Le feature degli edges spx-spx non corrispondono!")
+    
+    
+    
+    
+    e_i_cdch_spx = graph['edge_index_cdch_spx']
+    e_a_cdch_spx = graph['edge_attr_cdch_spx']
+     
+    ihit1_cdch_spx = e_i_cdch_spx[0]
+    ihit2_cdch_spx = e_i_cdch_spx[1]
+    
+    cond1 = np.abs(x_spx[ihit2_cdch_spx][:,0]-x_cdch[ihit1_cdch_spx][:,0] - e_a_cdch_spx[:,0])<1e-3
+    cond2 = np.abs(x_spx[ihit2_cdch_spx][:,1]-x_cdch[ihit1_cdch_spx][:,1] - e_a_cdch_spx[:,1])<1e-3
+    cond3 = np.abs(x_spx[ihit2_cdch_spx][:,3]-x_cdch[ihit1_cdch_spx][:,3] - e_a_cdch_spx[:,2])<1e-3
+    if not cond1.all() &cond2.all() & cond3.all():
+        raise ValueError("Le feature degli edges cdch-spx non corrispondono!")
+    
+
 
 def build_dataset(
     file_ids,
@@ -630,7 +675,7 @@ def build_dataset(
                 #print("Starting to create graph for event ", ev)
                 
                 graphs = build_event_graphs(cdch_event, spx_event,  layer_depth,wire_depth, cdch_spx_depth, adjacent_sector_depth)
-    
+                count = 0
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
     		
@@ -645,7 +690,9 @@ def build_dataset(
                                               X_spx=graph['X_spx'], edge_attr_spx=graph['edge_attr_spx'], edge_index_spx=graph['edge_index_spx'], truth_spx=graph['truth_spx'],
                                                                     edge_attr_cdch_spx=graph['edge_attr_cdch_spx'], edge_index_cdch_spx=graph['edge_index_cdch_spx']
                                                                     )
-    
+                    if(count == 0):
+                        TestGraph(graph)    
+                        count = 1
                     if plot_it:
                         """
                         Plot a graph
@@ -667,7 +714,7 @@ if __name__ == "__main__" :
 
     import sys
 
-    PLOT = False
+    PLOT = True
     TIME = True
     output_dir = "HeterogeneousGraphDataNoMix/"
     #output_dir = "."

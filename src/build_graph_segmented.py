@@ -27,9 +27,9 @@ def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturi
     data_spx = np.loadtxt(f'{input_dir}/{file_id}_SPXHits.txt')
 
     # Define features
-    features_mc = ['event_id', 'sevid','xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
-    features_cdch = ['event_id','sevid', 'wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
-    features_spx = ['event_id','sevid' ,'pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
+    features_mc = ['event_id','xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
+    features_cdch = ['event_id', 'wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
+    features_spx = ['event_id','pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
 
     # Create DataFrames
     df_mc_full = pd.DataFrame(data_mc, columns=features_mc)
@@ -167,7 +167,7 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3, adjac
             dy_same = same_layer_hits_pairs['y0_2'] - same_layer_hits_pairs['y0_1']
             dt_same = same_layer_hits_pairs['time_2'] - same_layer_hits_pairs['time_1']
 
-            edge_index.append(same_layer_pairs.values.T)  # Shape: (2, num_same_layer_edges)
+            edge_index.append(same_layer_hits_pairs[['hit_id_1', 'hit_id_2']].values.T)  # Shape: (2, num_same_layer_edges)
             edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
 
         # **Alternate-layer edges**
@@ -648,6 +648,26 @@ def build_event_graphs(hits_cdch, hits_spx, layer_depth, wire_depth, cdch_spx_de
 
     return graphs
 
+
+def TestGraph(graph):
+    e_i = graph['edge_index']
+    e_a = graph['edge_attr'] 
+    x = graph['X']
+    
+    ihit1 = e_i[0]
+    ihit2 = e_i[1]
+    
+   
+    cond1 = np.abs(x[ihit2][:,0]-x[ihit1][:,0] - e_a[:,0])<1e-3
+    cond2 = np.abs(x[ihit2][:,1]-x[ihit1][:,1] - e_a[:,1])<1e-3
+    cond3 = np.abs(x[ihit2][:,3]-x[ihit1][:,3] - e_a[:,2])<1e-3
+
+    if not cond1.all() &cond2.all() & cond3.all():
+        raise ValueError("Le feature degli edges non corrispondono!")
+
+
+
+
 def build_dataset(
     file_ids,
     input_dir="/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC",
@@ -657,7 +677,7 @@ def build_dataset(
     wire_depth=10,
     layer_depth=6,
     cdch_spx_depth=4,
-    adjacent_sector_depth =3
+    adjacent_sector_depth =2
 ):
     """
     Builds graph datasets from a set of event files and saves them as *.npz files.
@@ -715,7 +735,7 @@ def build_dataset(
 
         # Loop over events
         events = load_data(file_id, input_dir=input_dir)
-
+        count = 0
         for ev, event in enumerate(events):
             if(ev >=0):
                 mc_truth = event[0]
@@ -733,14 +753,16 @@ def build_dataset(
                 #print("Starting to create graph for event ", ev)
                 
                 graphs = build_event_graphs(cdch_event, spx_event, layer_depth, wire_depth, cdch_spx_depth, adjacent_sector_depth)
-    
+                if(count == 0):
+                        TestGraph(graph)    
+                        count = 1
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
     
                     output_filename = os.path.join(output_dir, f"file{file_id}_event{ev}_sectors{sec}.npz")
     
                     np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
-    
+                    TestGraph(graph)
                     if plot_it:
                         """
                         Plot a graph
@@ -762,9 +784,9 @@ if __name__ == "__main__" :
     PLOT = True
     TIME = True
     #input_dir = "/meg/data1/shared/subprojects/cdch/ext-venturini_a/GNN/NoPileUpMC"
-    input_dir = "."
+    input_dir = "RawDataWithNoise"
     output_dir = "."
-    file_ids = [f'Noise{int(sys.argv[1])}']
+    file_ids = [f'Noise0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)

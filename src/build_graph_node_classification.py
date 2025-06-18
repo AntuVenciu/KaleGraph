@@ -27,9 +27,9 @@ def load_data(file_id, input_dir="/meg/data1/shared/subprojects/cdch/ext-venturi
     data_spx = np.loadtxt(f'{input_dir}/{file_id}_SPXHits.txt')
 
     # Define features
-    features_mc = ['event_id','sevid', 'xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
-    features_cdch = ['event_id', 'sevid','wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
-    features_spx = ['event_id', 'sevid','pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
+    features_mc = ['event_id', 'xTGT', 'yTGT', 'zTGT', 'theta', 'phi', 'mom']
+    features_cdch = ['event_id','wire_id', 'x0', 'y0', 'z0', 'theta', 'phi', 'ztimediff', 'time', 'ampl', 'truth', 'hit_id', 'next_hit_id']
+    features_spx = ['event_id','pixel_id', 'x0', 'y0', 'z0', 'time', 'truth', 'hit_id', 'next_hit_id']
 
     # Create DataFrames
     df_mc_full = pd.DataFrame(data_mc, columns=features_mc)
@@ -136,7 +136,7 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adja
     hits_layers = [cdch_hits[cdch_hits['wire_id'].floordiv(192) == layer] for layer in layers]
     edge_index = []
     edge_attr = []
-    
+
     for i, layer in enumerate(layers):
 
         # Get hits for the current layer
@@ -156,6 +156,7 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adja
         # Compute edge attributes (dx, dy, dt) for same-layer pairs
         if same_layer_pairs:
             same_layer_pairs = pd.DataFrame(same_layer_pairs, columns=['hit_id_a', 'hit_id_b'])
+
             same_layer_hits_pairs = same_layer_pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']],
                                                            left_on='hit_id_a', right_on='hit_id')
             same_layer_hits_pairs = same_layer_hits_pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time']],
@@ -166,17 +167,21 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adja
             dy_same = same_layer_hits_pairs['y0_2'] - same_layer_hits_pairs['y0_1']
             dt_same = same_layer_hits_pairs['time_2'] - same_layer_hits_pairs['time_1']
 
-            edge_index.append(same_layer_pairs.values.T)  # Shape: (2, num_same_layer_edges)
-            edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
 
+            edge_index.append(same_layer_hits_pairs[['hit_id_1', 'hit_id_2']].values.T)  # Shape: (2, num_same_layer_edges)
+            edge_attr.append(np.stack((dx_same, dy_same, dt_same), axis=-1))  # Shape: (num_same_layer_edges, 3)
+            
+            
+            #print(same_layer_pairs)
+            
         # **Alternate-layer edges**
-        
+        pd.set_option('display.max_rows', None)
         if layer == 9:
             break  # Stop at the last layer
         for n in range(1,layer_depth+1):
             if(layer+n > 9):
                 break
-         
+            
             # Get hits for the next layer
             hits_layer_i_plus_1 = hits_layers[i + n]
 
@@ -188,17 +193,18 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adja
             hitID_i_plus_1 = hits_layer_i_plus_1['hit_id'].values
             # Create all possible pairs of hitIDs between the two layers
             pairs = pd.MultiIndex.from_product([hitID_i, hitID_i_plus_1]).to_frame(index=False)
+            
             pairs.columns = ['hit_id_a', 'hit_id_b']
-
+            
             # Compute edge attributes (dx, dy, dt)
             hits_pairs = pairs.merge(hits_layer_i[['hit_id', 'x0', 'y0', 'time', 'wire_id']], left_on='hit_id_a', right_on='hit_id')
             hits_pairs = hits_pairs.merge(hits_layer_i_plus_1[['hit_id', 'x0', 'y0', 'time', 'wire_id']], left_on='hit_id_b', right_on='hit_id', suffixes=('_1', '_2'))
-    
+            
             
             hits_pairs['sector_1'] = hits_pairs['wire_id_1'] % 192 // 16
             hits_pairs['sector_2'] = hits_pairs['wire_id_2'] % 192 // 16
-
-
+            
+            
             hits_pairs = hits_pairs[np.abs(hits_pairs['sector_1'] - hits_pairs['sector_2']) <= adjacent_sector_depth]
 
     
@@ -206,18 +212,30 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adja
             dx = hits_pairs['x0_2'] - hits_pairs['x0_1']
             dy = hits_pairs['y0_2'] - hits_pairs['y0_1']
             dt = hits_pairs['time_2'] - hits_pairs['time_1']
-
+            #print(dx)
+            
+        
             # Append results to the edge list
-            edge_index.append(hits_pairs[['hit_id_a', 'hit_id_b']].values.T)  # Shape: (2, num_edges)
+            edge_index.append(hits_pairs[['hit_id_1', 'hit_id_2']].values.T)  # Shape: (2, num_edges)
+            
             edge_attr.append(np.stack((dx, dy, dt), axis=-1))  # Shape: (num_edges, 3)
+            #print(hits_pairs[['hit_id_1', 'hit_id_2']])
+            #print(edge_attr)
             
     
+    
+
     
     # Combine edge indices and attributes from all layers
     if len(edge_index) > 0:
         edge_index = np.hstack(edge_index)  # Shape: (2, total_num_edges)
         edge_attr = np.vstack(edge_attr)  # Shape: (total_num_edges, 3)
-        
+    
+    
+
+    #print(edge_index)
+    #print(edge_attr)
+    #print("\n")    
 
     swapped = edge_index[::-1]
     swapped_edge_Attr = edge_attr;
@@ -226,8 +244,8 @@ def build_edges_alternate_layers(cdch_hits,  layer_depth = 1,wire_depth=3 , adja
     np.set_printoptions(threshold =np.inf)
     
     e = np.concatenate((edge_index, swapped), axis = 1)
-    attr = np.concatenate((edge_attr, swapped_edge_Attr), axis =0)
-
+    attr = np.concatenate((edge_attr, -swapped_edge_Attr), axis =0)
+    #print(f"Number of cdch edges is:{e[0].size}")
     return e, attr
 
 
@@ -312,7 +330,7 @@ def build_graph_spx(SPX_hits, index_start_at=0):
     #correct for starting index.
     edge_index[0] +=index_start_at
     edge_index[1] +=index_start_at
-    
+    print(f"Number of spx edges is:{edge_index[0].size}")
     return X, edge_index, edge_attr, truth_hits
 
 
@@ -471,7 +489,7 @@ def create_connection_between_cdchlayer_spx(hits_spx, sector_hits, All_CDCH_hits
         return [],[],[]
     
             
-
+    print(f"Number of cdch-spx edges is:{edge_index[0].size}")
     return edge_index, edge_attr
 
 
@@ -575,7 +593,27 @@ def build_event_graphs(hits_cdch, hits_spx, layer_depth, wire_depth, cdch_spx_de
         
         
 
-    return graphs
+    return graphs 
+
+
+
+def TestGraph(graph):
+    e_i = graph['edge_index']
+    e_a = graph['edge_attr'] 
+    x = graph['X']
+    
+    ihit1 = e_i[0]
+    ihit2 = e_i[1]
+    
+   
+    cond1 = np.abs(x[ihit2][:,0]-x[ihit1][:,0] - e_a[:,0])<1e-3
+    cond2 = np.abs(x[ihit2][:,1]-x[ihit1][:,1] - e_a[:,1])<1e-3
+    cond3 = np.abs(x[ihit2][:,3]-x[ihit1][:,3] - e_a[:,2])<1e-3
+
+    if not cond1.all() &cond2.all() & cond3.all():
+        raise ValueError("Le feature degli edges non corrispondono!")
+
+
 
 def build_dataset(
     file_ids,
@@ -583,10 +621,10 @@ def build_dataset(
     output_dir="./",
     time_it=False,
     plot_it=False,
-    wire_depth=4,
-    layer_depth=3,
-    cdch_spx_depth=4,
-    adjacent_sector_depth =3
+    wire_depth=6, #4
+    layer_depth=4, #3
+    cdch_spx_depth=4, #4
+    adjacent_sector_depth =2 #2
 ):
     """
     Builds graph datasets from a set of event files and saves them as *.npz files.
@@ -662,14 +700,16 @@ def build_dataset(
                 #print("Starting to create graph for event ", ev)
                 
                 graphs = build_event_graphs(cdch_event, spx_event, layer_depth,wire_depth, cdch_spx_depth, adjacent_sector_depth )
-                
+                count = 0
                 # Loop over sections in an event
                 for sec, graph in enumerate(graphs):
     
                     output_filename = os.path.join(output_dir, f"file{file_id}_event{ev}_sectors{sec}.npz")
     
                     np.savez(output_filename, X=graph['X'], edge_attr=graph['edge_attr'], edge_index=graph['edge_index'], truth=graph['truth'])
-    
+                    if(count == 0):
+                        TestGraph(graph)    
+                        count = 1
                     if plot_it:
                         """
                         Plot a graph
@@ -677,7 +717,7 @@ def build_dataset(
                         from utils.plot_graph_node_classification import plot, plot_only_sev_id
                         #plot_only_sev_id(graph['X'], graph['edge_index'], graph['truth'], 27)
                         plot(graph['X'], graph['edge_index'], graph['truth'])
-    
+
         if time_it:
             t_stop = time.time()
             print(f"{(t_stop - t_start) / len(events) :.3f} s per event to build {len(events)} events.")
@@ -690,9 +730,14 @@ if __name__ == "__main__" :
 
     PLOT = True
     TIME = True
-    input_dir = "."
+    input_dir = "."#"RawDataWithNoise/"
+    output_dir = "."
+    
+    input_dir = "RawDataWithNoise"
     output_dir = "."
     file_ids = [f'Noise{int(sys.argv[1])}']
+
+    file_ids = [f'Noise0{int(sys.argv[1])}']
     #file_ids = [f'0{int(idx)}' for idx in range(1001, 1010, 1)]
     #file_ids = [f'MC0{int(idx)}' for idx in range(1002, 1003, 1)]
     build_dataset(file_ids, input_dir=input_dir, output_dir=output_dir, time_it=TIME, plot_it=PLOT)
